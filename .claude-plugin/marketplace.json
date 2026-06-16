@@ -1,0 +1,22 @@
+{
+  "name": "dev-gui-marketplace",
+  "owner": {
+    "name": "北林"
+  },
+  "description": "Atom Game GUI 开发全流程插件市场 —— 收录 dev-gui-plugin 等 GUI pipeline 工具",
+  "plugins": [
+    {
+      "name": "dev-gui-plugin",
+      "source": "./",
+      "description": "Atom Game GUI 开发全流程 pipeline — 从需求到交付的 8 阶段自动化工作流，含长期记忆知识库和 subagent 审查体系",
+      "author": {
+        "name": "北林"
+      },
+      "homepage": "https://github.com/AvatarGanymede/dev-gui-plugin",
+      "repository": "https://github.com/AvatarGanymede/dev-gui-plugin",
+      "license": "MIT",
+      "keywords": ["gui", "unity", "mvvm", "prefab", "atom-game"],
+      "category": "development"
+    }
+  ]
+}

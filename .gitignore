@@ -1,0 +1,22 @@
+# Claude Code per-run 产物（项目本地、易失）
+/.claude/dev-gui-runs/
+
+# 长期知识库运行时数据（不进 git，由 seed 初始化）
+gui-knowledge/
+
+# 内部文档草稿（不发布）
+feishu_docs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
