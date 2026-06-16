@@ -1,5 +1,6 @@
 ---
 name: gui-verify
+user-invocable: false
 description: >-
   Atom Game GUI pipeline 第 6 阶段。执行 Type-A（self-check）+ Type-B（subagent judge）验证门，
   产出 6 态裁决 GUI_VERDICT.json 与最终统一人工检查清单 HUMAN_REVIEW.md。全程无中途人工暂停。

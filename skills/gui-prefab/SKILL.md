@@ -1,5 +1,6 @@
 ---
 name: gui-prefab
+user-invocable: false
 description: >-
   Atom Game GUI pipeline 第 3 阶段。把 View.cs 挂到 Prefab 并绑定 [SerializeField] 引用。
   自包含的 Prefab 编辑指引，不依赖外部 edit-prefab skill。在 gui-draft 生成 View.cs 后使用。

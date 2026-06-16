@@ -1,5 +1,6 @@
 ---
 name: gui-config
+user-invocable: false
 description: >-
   Atom Game GUI pipeline 第 4 阶段（按需，可跳过）。编辑 design/tables 下的 Excel 配置源表，
   并镜像改动到对应 *_data.lua（模拟导表，零人工中断）。自包含的配置表编辑指引，不依赖外部

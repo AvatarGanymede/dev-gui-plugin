@@ -1,5 +1,6 @@
 ---
 name: gui-improve
+user-invocable: false
 description: >-
   Atom Game GUI pipeline 第 7 阶段。对 GUI_REVIEW.md 中的 CRITICAL 问题迭代修复（最多 2 轮）：
   修复 → 全新 subagent 重新审查（Bias Guard）→ 记录 GUI_IMPROVEMENT_LOG.md。仅当 gui-review

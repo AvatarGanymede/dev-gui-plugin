@@ -1,5 +1,6 @@
 ---
 name: gui-draft
+user-invocable: false
 description: >-
   Atom Game GUI pipeline 第 2 阶段。生成 MVVM 代码（Panel.lua + View.cs + 如需的 ViewModel）。
   自包含的 MVVM 指引，不依赖外部 atomgui skill。在 gui-plan 产出 GUI_PRD.md 后使用。控制代码

@@ -44,16 +44,42 @@ claude --plugin-dir /path/to/dev-gui-plugin
 ### 调用
 
 ```
-# 完整 pipeline（orchestrator 串联，无中途人工暂停）
+# ★ 一键全自动（显式编排，推荐）：一条命令跑完 8 阶段，阶段间不停顿询问，
+#   缺必要信息时占位实现 + 留 TODO 注释，统一收口到 HUMAN_REVIEW.md
+/dev-gui-plugin:run BagPanel 新增批量出售按钮，prefab=Assets/UI/Bag.prefab
+
+# 完整 pipeline（从入口 skill 起，靠各阶段「→ 进入下一阶段」软串联）
 /dev-gui-plugin:gui-plan
   → gui-draft → gui-prefab → gui-config
   → gui-review → gui-verify → gui-improve → gui-learn
 
-# 单独使用
+# 单独使用（仍对用户可见的入口）
+/dev-gui-plugin:gui-plan            # 手动从头跑 pipeline（软串联）
 /dev-gui-plugin:gui-review          # 仅审查已有 GUI 代码
 /dev-gui-plugin:gui-learn           # 沉淀知识（捕获遍）
 /dev-gui-plugin:gui-learn enrich    # 充实遍：填通用层 _TODO_ 段（--max N 限批量）
 ```
+
+> **表现层隐藏**：`gui-draft` / `gui-prefab` / `gui-config` / `gui-verify` / `gui-improve`
+> 这 5 个纯中间阶段在 frontmatter 设了 `user-invocable: false` —— **不出现在 `/` 菜单、用户无法手动调用**，
+> 但 Claude 仍可在 pipeline 中自动调用（其 description 始终在上下文里）。
+> 用户可见入口收敛为：`/dev-gui-plugin:run`（全自动）、`gui-plan`、`gui-review`、`gui-learn`。
+
+> **命名空间**：插件命令的前缀是插件名，故命令实际为 `/dev-gui-plugin:run`。
+> 若想用更短的 `/dev-gui:run`，需把插件改名为 `dev-gui`（`plugin.json` + `marketplace.json` 的 `name`）。
+
+#### 全自动是怎么「保证」串联的
+
+`/dev-gui-plugin:run` 做两件事把串联从「靠 skill 描述暗示」升级为「确定性编排」：
+
+1. **显式编排 prompt**：命令本体写死「依次执行全部 8 阶段、阶段间不得停顿询问、缺信息占位+TODO」，
+   并在开始时写一个自动驱动哨兵 `.autorun.json` 到本次 run 目录。
+2. **Stop hook 调度器**（`hooks-handlers/on_stop_continue.py`）：每当 agent 想停下，调度器读
+   `run_state.json`，若本次 run 带哨兵且还有阶段未推进（状态非 `done/accepted/skipped`），就
+   `decision:block` 把 agent 拉回，指明**下一阶段**并要求继续；直到 gui-learn 完成才放行并清哨兵。
+   - 仅对带哨兵的 run 生效 → **单独跑某个 skill 的手动用法完全不受影响**。
+   - 带 `nudges/max_nudges`（默认 30）计数上限，超限自动脱离并写 `.autorun.log`，避免无进展死循环。
+   - 它是**驱动器**（保证向前串联）；跨 run 的「有没有卡住」健康巡检仍用 `tools/watchdog.py`。
 
 ## 关键设计
 
@@ -83,10 +109,11 @@ dev-gui-plugin/
 ├── .claude-plugin/
 │   ├── plugin.json         # 插件清单
 │   └── marketplace.json    # 市场清单（本仓库即 marketplace）
+├── commands/run.md         # 一键全自动编排命令（/dev-gui-plugin:run）
 ├── skills/                 # 8 个 skill（gui-plan … gui-learn）
 ├── agents/gui-reviewer.md  # 审查 / 晋升背书 subagent
-├── hooks/hooks.json        # SessionStart 注入 query_pack；PreToolUse(Write|Edit) 跑 capture_filter
-├── hooks-handlers/         # on_session_start.py · pre_write_filter.py（统一 Python）
+├── hooks/hooks.json        # SessionStart 注入 query_pack；PreToolUse(Write|Edit) 跑 capture_filter；Stop 驱动 pipeline 串联
+├── hooks-handlers/         # on_session_start.py · pre_write_filter.py · on_stop_continue.py（统一 Python）
 ├── gui-knowledge-seed/     # 知识库只读种子（首次复制初始化）
 ├── shared-references/      # 5 份契约文档
 ├── tools/                  # gui_knowledge.py · gui_run_state.py · capture_filter.py
