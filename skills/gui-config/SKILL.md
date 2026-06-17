@@ -15,14 +15,15 @@ description: >-
 python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_run_state.py" set "${CLAUDE_PROJECT_DIR}" <panelId> gui-config skipped
 ```
 
-## 规则（模拟导表，零人工中断）
+## 规则（优先工具导表，导出失败才手改镜像；零人工中断）
 
 1. 改 `design/tables/` 下的 **Excel 源表**（真正的真相源）。
-2. **同时镜像改动到对应 `*_data.lua` 行**，模拟「导表成功导出」，使运行期与后续阶段立即可见
-   新配置。镜像须严格对齐 GDE 导出格式（按行定位、同字段同值）。
-3. 区分两类「生成文件」，勿混淆：
-   - `*_data.lua`（配表导出产物）—— 本阶段**故意镜像写入**，不是禁区。
-   - `*_viewmodel.lua` / `*ViewModel.cs`（MVVM 生成）—— 仍**禁止**手改。
+2. **`*_data.lua` 优先用工具正式导出**：运行时若有可用的导表工具（GDE CLI / excel-config 等）→ 用它导出，**不手改**。
+3. **导出工具不可用 / 失败 → 才允许手改镜像写入 `*_data.lua`**（降级兜底，模拟导表）：按行定位、同字段同值，
+   严格对齐 GDE 导出格式，使运行期与后续阶段立即可见新配置；加 `-- TODO(模拟导出)` 标记并记入 `HUMAN_REVIEW.md`。
+4. 区分两类「生成文件」，勿混淆——两者都**优先工具导出、导出失败才手改**：
+   - `*_data.lua`（配表导出产物）—— 本阶段在导出失败时手改镜像写入，不是禁区。
+   - `*_viewmodel.lua` / `*ViewModel.cs`（MVVM 生成）—— 同理优先工具导出，失败才手改（见 mvvm-contract §3）。
 
 ## 工具使用（不硬绑定 MCP）
 
@@ -33,9 +34,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_run_state.py" set "${CLAUDE_PROJECT_DIR
 
 Excel 源表与对应 `*_data.lua` 改动**一致**（同字段、同值），运行期可读到新配置。
 
-> ⚠ 正式导表仍需人工：手写的 `*_data.lua` 是**模拟产物**，正式 GDE 导表会覆盖它。
+> ⚠ 若本次因导出失败而**手改镜像**了 `*_data.lua`：它是**模拟产物**，正式 GDE 导表会覆盖它。
 > 故「确认 Excel 配置正确并正式导表」列入 `HUMAN_REVIEW.md`（gui-verify 末），
-> **绝不在管线中途停顿**。
+> **绝不在管线中途停顿**。（若已用工具正式导出，则无此遗留项。）
 
 记录状态后 → 进入 **gui-review**：
 ```bash

@@ -22,7 +22,9 @@ description: >-
 - C# 编译通过（有 Unity 能力则读 Console / refresh，否则 BLOCKED）
 - Lua 语法正确（`luac -p` 或热更无报错）
 - Prefab 节点存在 / 绑定数量匹配（有 Prefab 能力则核实，否则 BLOCKED）
-- 未改 MVVM 生成文件（`*_viewmodel.lua` / `*ViewModel.cs` 的 diff；`*_data.lua` 例外）
+- 生成文件优先工具导出（`*_viewmodel.lua` / `*ViewModel.cs` 的 diff；`*_data.lua` 例外）
+  - 例外：diff 带 `TODO(模拟导出)` 标记（工具导出失败的降级手改兜底）→ 判 `BLOCKED`「待工具正式重新导出覆盖」记入清单，**不判 failed、不触发 improve 回退**
+  - 无标记的手改（本可用工具却未用）→ 仍判 failed
 - 配置 Excel↔data 同步（无配置变更 → `NOT_APPLICABLE`）
 
 ## Type-B 门（spawn gui-reviewer subagent，Bias Guard）

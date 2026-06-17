@@ -47,7 +47,8 @@ tools: Read, Grep, Glob, LSP
 - [ ] **Panel 用 `vmFactory:createViewModel()` 直建** —— 须用 `self:createViewModel()` /
       `self:createCustomViewModelList()`（CRITICAL，内存泄漏）。
 - [ ] **手改自动生成文件** `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` /
-      `ui_viewmodel_define.lua`（CRITICAL）。`*_data.lua` 例外（配表镜像）。
+      `ui_viewmodel_define.lua`（CRITICAL）。**例外**：改动带 `TODO(模拟导出)` 标记（工具导出失败的降级手改兜底）
+      → 不报 CRITICAL，按需提示「待工具正式重新导出覆盖」即可；`*_data.lua` 同样例外（配表镜像/导表产物）。
 - [ ] **CustomViewModelList 改动后漏 `update()`** —— C# View 收不到通知（MAJOR）。
 - [ ] **`onPanelClose` 漏清理** —— 未 `cancelTimer` / `removeEventListener` / `dispose` 子 Lib（MAJOR，泄漏）。
 - [ ] **给 ViewModel 实例加自定义字段** —— 自定义数据应存 Panel 字段（MAJOR）。

@@ -17,8 +17,9 @@ description: >-
 ## 核心规则
 
 - Panel (Lua) **写** ViewModel，View (C#) **只读**（单向数据流，靠 SharedArray 共享）。
-- 需新增/改 ViewModel 属性 → 走严格 3-Phase：ViewModelDes → 生成 → View/Panel（见 mvvm-contract §3，**生成成功前禁写 Phase 3 代码**）。
-- **禁止手改** `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`（自动生成）。
+- 需新增/改 ViewModel 属性 → 走严格 3-Phase：ViewModelDes → 生成 → View/Panel（见 mvvm-contract §3，**生成产物就绪前禁写 Phase 3 代码**）。
+- **生成文件优先工具导出、不优先手改** `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`：
+  能用工具导出就不手改；**仅当工具导出失败/不可用时**才允许手改补齐（加 `TODO(模拟导出)` + 记 `HUMAN_REVIEW.md`，见 mvvm-contract §3）。
 - Panel：`<PanelName>Panel.lua` 继承 `UIBasePanel`；View：`<PanelName>View.cs` 继承 `BaseView`。
 - **优先 AtomUI* 公共组件，避免裸 UGUI**（`AtomUIText`/`AtomUIImage`/`AtomUIButton`）。
 
@@ -98,7 +99,7 @@ public class PanelNameView : BaseView
 ## Gate
 
 - Panel 写的每个 ViewModel 属性 → View 中有对应读取/绑定（双向匹配）。
-- 自动生成文件未被手改。
+- 自动生成文件优先工具导出；若因导出失败手改，须带 `TODO(模拟导出)` 标记并记入 `HUMAN_REVIEW.md`。
 - 生命周期订阅↔退订配对。
 
 → 进入 **gui-prefab**。

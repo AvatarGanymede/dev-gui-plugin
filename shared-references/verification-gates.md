@@ -14,7 +14,7 @@
 | Lua 语法正确 | `luac -p` 或热更无报错 | 判 `BLOCKED` |
 | Prefab 节点存在 | 读 Prefab hierarchy，核对 View 中 SerializeField 名称对应节点 | 判 `BLOCKED`/`NOT_APPLICABLE` |
 | 绑定数量匹配 | View 中 SerializeField 数量 vs Prefab 实际绑定数量 | 判 `BLOCKED` |
-| 未改 MVVM 生成文件 | 检查 `*_viewmodel.lua` / `*ViewModel.cs` 的 diff（`*_data.lua` 例外） | 直接可查 |
+| 生成文件优先工具导出 | 检查 `*_viewmodel.lua` / `*ViewModel.cs` 的 diff（`*_data.lua` 例外） | 直接可查；若 diff 带 `TODO(模拟导出)` 标记（工具导出失败的降级手改兜底，见 mvvm-contract §3）→ 判 `BLOCKED` 记入清单「待工具正式重新导出覆盖」，**不判 failed**，不触发 improve 回退；若**无标记的**手改（本可用工具却未用）→ 仍判 failed |
 | 配置 Excel↔data 同步 | Excel 源表与对应 `*_data.lua` 改动一致（模拟导表已镜像） | 无配置变更则 `NOT_APPLICABLE` |
 
 ## Type-B 门（subagent judge，需品味/领域知识）

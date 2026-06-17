@@ -263,8 +263,9 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 **核心规则（内嵌）**：
 - Panel (Lua) 写 ViewModel，View (C#) 只读
-- 需要新增/改 ViewModel 属性 → 走 3-Phase：ViewModelDes → 生成 → View/Panel（生成成功前禁写 Phase 3）
-- 禁止手改 `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`
+- 需要新增/改 ViewModel 属性 → 走 3-Phase：ViewModelDes → 生成 → View/Panel（生成产物就绪前禁写 Phase 3）
+- 生成文件 `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`：
+  **优先工具导出，不优先手改**；仅当工具导出失败/不可用时才允许降级手改补齐（加 `TODO(模拟导出)` + 记 `HUMAN_REVIEW.md`）
 - Panel 文件名：`<PanelName>Panel.lua`，继承 `UIBasePanel`
 - View 文件名：`<PanelName>View.cs`，继承 `BaseView`
 - 优先 AtomUI* 公共组件，避免裸 UGUI
@@ -277,7 +278,7 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 **Gate**：
 - Panel 写的 ViewModel 属性 → View 中有对应的读取/绑定
-- 自动生成文件未被手改
+- 自动生成文件优先工具导出；如因导出失败手改，须带 `TODO(模拟导出)` 标记并记入 `HUMAN_REVIEW.md`
 
 ---
 
@@ -302,13 +303,14 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 **职责**：自包含的配置表编辑指引，不依赖外部 edit-excel skill。
 
-**规则（模拟导表，零人工中断）**：
+**规则（优先工具导表，导出失败才手改镜像；零人工中断）**：
 - 改 `design/tables/` 下的 **Excel 源表**（真正的真相源）。
-- **同时镜像改动到对应 `*_data.lua` 行**，模拟「导表成功导出」，使运行期与后续阶段立即可见新配置，
-  全程不中断等人工导表。镜像须严格对齐 GDE 导出格式（按行定位、同字段同值）。
-- 区分两类「生成文件」，勿混淆：
-  - `*_data.lua`（配表导出产物）—— 本阶段**故意镜像写入**（模拟导表），不是禁区。
-  - `*_viewmodel.lua` / `*ViewModel.cs`（MVVM 代码生成）—— 仍**禁止**手改（见 Phase 2）。
+- `*_data.lua` **优先用工具正式导出**（GDE CLI / excel-config 等）；**工具不可用/导出失败时，才降级手改镜像写入**，
+  模拟「导表成功导出」，使运行期与后续阶段立即可见新配置，全程不中断。手改镜像须严格对齐 GDE 导出格式
+  （按行定位、同字段同值），加 `TODO(模拟导出)` 并记 `HUMAN_REVIEW.md`。
+- 区分两类「生成文件」，勿混淆——两者都**优先工具导出、导出失败才手改**：
+  - `*_data.lua`（配表导出产物）—— 导出失败时手改镜像写入，不是禁区。
+  - `*_viewmodel.lua` / `*ViewModel.cs`（MVVM 代码生成）—— 同理优先工具导出，失败才手改（见 Phase 2）。
 
 **工具使用**：不在插件内硬绑定具体 MCP/skill。运行时由模型根据**当前已加载**的能力自行选择
 （如已加载 `excel-config`/`excel-mcp` 则用之；未加载则在最终人工清单中标出需手工配表）。
@@ -409,7 +411,7 @@ tools: Read, Grep, Glob, LSP
 | Lua 语法正确 | `luac -p` 或热更无报错 |
 | Prefab 节点存在 | 读 Prefab hierarchy，检查 View 中 SerializeField 名称对应的节点 |
 | 绑定数量匹配 | View 中 SerializeField 数量 vs Prefab 中实际绑定数量 |
-| 未改 MVVM 生成文件 | 检查 `*_viewmodel.lua` / `*ViewModel.cs` 的 diff（`*_data.lua` 例外：本管线故意镜像写入） |
+| 生成文件优先工具导出 | 检查 `*_viewmodel.lua` / `*ViewModel.cs` 的 diff；带 `TODO(模拟导出)` 标记的手改（工具导出失败兜底）判 `BLOCKED` 待重新导出、不判 failed；无标记手改仍判 failed（`*_data.lua` 例外：导出失败时镜像写入） |
 | 配置 Excel↔data 同步 | Excel 源表与对应 `*_data.lua` 改动一致（模拟导表已正确镜像） |
 
 #### Type-B 门（subagent judge）
@@ -730,7 +732,7 @@ _由 graph/edges.jsonl 渲染_
 - Panel → ViewModel → View 数据流规范
 - 属性命名约定
 - 3-Phase 变更流程
-- 禁止事项（手改生成文件等）
+- 生成文件「优先工具导出，导出失败才手改」硬规则 + 其它禁止事项
 
 ### 2. prefab-binding-contract.md
 - [SerializeField] 绑定检查清单
@@ -898,7 +900,8 @@ ARIS 有 ~10,285 行 Python/Shell 代码（30 个文件），以下是迁移到 
 | 迁移 capture_filter.py | 复用反自我污染机械筛（env / transient / negative-tool / single-instance），保护 gui-knowledge 不写入操作噪音、强制实例→类级；经 PreToolUse(Write) hook + gui-learn 第 0 步触发 |
 | 迁移 threat_scan.py | 注入扫描与反污染分工：capture_filter 管写入噪音，threat_scan 管 query_pack 装配后的注入横幅（query_pack 走 SessionStart 自动注入，有注入风险） |
 | marketplace 分发形态 | 用户决定。放弃 `@skills-dir` 就地形态与 `--plugin-dir` 持久挂载，统一走 marketplace 安装/更新 |
-| 配置同时镜像 *_data.lua（模拟导表） | 用户决定。gui-config 改 Excel 源表的同时**镜像改对应 `*_data.lua`**，模拟导表成功，使运行期立即可见、管线零中断；正式 GDE 导表由人工在最终复核时执行（会覆盖模拟产物）。注意区别于 MVVM 生成文件（`*_viewmodel.lua`/`*ViewModel.cs`）仍禁手改 |
+| 导出产物「优先工具导出，导出失败才手改」 | 用户决定。所有导出/生成文件（MVVM 生成文件 `*_viewmodel.lua`/`*ViewModel.cs`/`AtomViewModelFactory.cs`/`ui_viewmodel_define.lua`，以及配表 `*_data.lua`）的硬规则：**优先用工具正式导出，不优先手改**；仅当工具导出失败/不可用时，才作为降级兜底手改补齐（加 `TODO(模拟导出)` 标记 + 记 `HUMAN_REVIEW.md`，待工具正式重新导出覆盖）。替代原「ViewModel 生成文件禁止手改」硬规则——禁止的是「能用工具却手改」，导出失败的兜底手改是允许的，保证管线不卡死 |
+| 配置 *_data.lua 导出失败才镜像写入 | 用户决定。gui-config 改 Excel 源表后，`*_data.lua` 优先用工具导表；**工具不可用/导出失败时**才镜像手写（模拟导表），使运行期立即可见、管线零中断；正式 GDE 导表由人工在最终复核时执行（会覆盖模拟产物）。与上一行统一在「优先工具导出」硬规则下 |
 | 无中途 HUMAN_CHECKPOINT，末尾统一复核 | 用户决定。agent 先把能做的全做完，所有需人确认项（Excel 正确性、运行期截图、未解决 CRITICAL、BLOCKED 项）汇总进 `HUMAN_REVIEW.md`，管线不停顿、跑到 gui-learn 才收口 |
 | 不硬绑定 MCP/skill | 用户决定。具体能力运行时按已加载环境自选，插件保持自包含且可降级 |
 | 接入 hooks/monitors | query_pack 注入用 SessionStart hook；知识写入过滤用 PreToolUse(Write) hook；watchdog（可选）对应 monitor 组件——复用插件原生机制而非裸脚本 |
