@@ -83,7 +83,8 @@ claude --plugin-dir /path/to/dev-gui-plugin
 
 ## 关键设计
 
-- **自包含**：不依赖外部 `atomgui` / `edit-prefab` / `edit-excel` skill，MVVM/Prefab/配表指引内聚。
+- **自包含**：MVVM/Prefab/配表指引内聚在 `shared-references/`（契约 + `patterns/` 进阶模式库），
+  不依赖外部 `edit-prefab` / `edit-excel` skill。
 - **不硬绑定 MCP**：Prefab/Excel/Unity 编译等能力运行时按已加载环境自选；缺能力则降级标注
   `NOT_APPLICABLE`/`BLOCKED`，转人工，绝不臆测报缺陷。
 - **无中途暂停**：所有需人确认项统一收口到 `HUMAN_REVIEW.md`，管线跑完才收尾。
@@ -115,7 +116,7 @@ dev-gui-plugin/
 ├── hooks/hooks.json        # SessionStart 注入 query_pack；PreToolUse(Write|Edit) 跑 capture_filter；Stop 驱动 pipeline 串联
 ├── hooks-handlers/         # on_session_start.py · pre_write_filter.py · on_stop_continue.py（统一 Python）
 ├── gui-knowledge-seed/     # 知识库只读种子（首次复制初始化）
-├── shared-references/      # 5 份契约文档
+├── shared-references/      # 5 份契约文档 + patterns/（AtomGUI 进阶模式库）
 ├── tools/                  # gui_knowledge.py · gui_run_state.py · capture_filter.py
 │                           #   · threat_scan.py · watchdog.py · lint_skills_helpers.sh
 ├── plan/plan.md            # 设计与实现计划

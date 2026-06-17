@@ -24,7 +24,7 @@ dev-gui-plugin/
 │
 ├── skills/                            # 8 个命名空间 skill (/dev-gui-plugin:gui-xxx)
 │   ├── gui-plan/SKILL.md              # Phase 1: 信息收集 + 知识库查询
-│   ├── gui-draft/SKILL.md             # Phase 2: MVVM 代码生成（自包含，不依赖 atomgui）
+│   ├── gui-draft/SKILL.md             # Phase 2: MVVM 代码生成（自包含）
 │   ├── gui-prefab/SKILL.md            # Phase 3: Prefab 编辑（自包含，不依赖 edit-prefab）
 │   ├── gui-config/SKILL.md            # Phase 4: 配置表编辑（自包含，不依赖 edit-excel）
 │   ├── gui-review/SKILL.md            # Phase 5: Subagent 审查
@@ -51,7 +51,12 @@ dev-gui-plugin/
 │   ├── prefab-binding-contract.md     # Prefab 绑定完整性规范（[SerializeField] 检查清单）
 │   ├── verification-gates.md          # 验证门定义（Type-A/B 分类 + 6 态裁决）
 │   ├── knowledge-schema.md            # 知识条目 schema（bug/component/pattern/fix 字段定义）
-│   └── acceptance-gate.md             # 接受门分类（从 ARIS 迁移，适配 GUI 场景）
+│   ├── acceptance-gate.md             # 接受门分类（从 ARIS 迁移，适配 GUI 场景）
+│   └── patterns/                      # AtomGUI 进阶模式库
+│       ├── README.md                  #   模式选择决策树 + 文档索引
+│       ├── listmodule-pattern.md  scroll-rect-pattern.md  uilib-pattern.md
+│       ├── subview-pattern.md  world-tracking-pattern.md  fullscreen-basic-pattern.md
+│       └── stylesmodule-pattern.md  static-format-text-pattern.md  data-binding-patterns.md
 │
 ├── tools/                             # 辅助脚本（部分从 ARIS 迁移/适配，均为插件内 Python）
 │   ├── gui_knowledge.py               # 知识库引擎：建条目 / edges / render-connections / rebuild-query-pack / 去重（适配自 research_wiki.py）
@@ -254,58 +259,19 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 ### Phase 2: gui-draft — MVVM 代码生成
 
-**职责**：自包含的 MVVM 代码生成指引，不依赖外部 atomgui skill。
+**职责**：自包含的 MVVM 代码生成指引。
 
-**核心规则（内嵌，不引用 atomgui）**：
+**核心规则（内嵌）**：
 - Panel (Lua) 写 ViewModel，View (C#) 只读
-- 需要新增/改 ViewModel 属性 → 走 3-Phase：ViewModelDes → 生成 → View/Panel
-- 禁止手改 `*_viewmodel.lua` / `*ViewModel.cs`（自动生成文件）
-- Panel 文件名：`<PanelName>Panel.lua`，继承 `UIPanelBase`
-- View 文件名：`<PanelName>View.cs`，继承 `UIViewBase`
+- 需要新增/改 ViewModel 属性 → 走 3-Phase：ViewModelDes → 生成 → View/Panel（生成成功前禁写 Phase 3）
+- 禁止手改 `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`
+- Panel 文件名：`<PanelName>Panel.lua`，继承 `UIBasePanel`
+- View 文件名：`<PanelName>View.cs`，继承 `BaseView`
+- 优先 AtomUI* 公共组件，避免裸 UGUI
 
-**代码模板（示意，非事实来源）**：
-
-> ⚠ 下列模板仅示范结构。**生命周期方法名以运行期真实基类为准**——动手前先读
-> `UIPanelBase` / `UIViewBase` 确认（本项目实际 override 形如 `OnInstanceMethodIsEmpty`、
-> `OnContentRefresh` 等，与通用 Unity 命名不同）。模板里 `OnCreate`/`OnCreated`/`OnDestroy(ed)`
-> 等仅占位，存在前后不一致，**不要照抄**。
-```lua
--- Panel 模板
-local PanelNamePanel = Class("PanelNamePanel", UIPanelBase)
-
-function PanelNamePanel:OnCreate()
-    -- 绑定 ViewModel 属性
-    self.viewModel.someProperty = someValue
-end
-
-function PanelNamePanel:OnDestroy()
-    -- 清理
-end
-
-return PanelNamePanel
-```
-
-```csharp
-// View 模板
-public class PanelNameView : UIViewBase
-{
-    [SerializeField] private Button _btnConfirm;
-    [SerializeField] private TextMeshProUGUI _txtTitle;
-    [SerializeField] private StylesModule<SomeEnum> _stylesModule;
-
-    protected override void OnCreated()
-    {
-        _btnConfirm.onClick.AddListener(OnConfirmClick);
-    }
-
-    private void OnConfirmClick() { }
-
-    protected override void OnDestroyed()
-    {
-        _btnConfirm.onClick.RemoveListener(OnConfirmClick);
-    }
-}
-```
+> 真实模板见 `skills/gui-draft/SKILL.md` 与 `shared-references/mvvm-contract.md`（已注入真实基类、
+> 生命周期钩子 `prepareViewModel`/`onPanelClose`、事件 enum 同步、`RegisterPropertyChangeHandler` 等）。
+> 进阶模式（ListModule/ScrollRect/UILib/SubView/世界跟踪等）见 `shared-references/patterns/`。
 
 **输出**：Panel.lua + View.cs + ViewModel（如有新增）
 
@@ -397,7 +363,7 @@ tools: Read, Grep, Glob, LSP
 
 ## 校验基准以运行期真实代码为准
 - 本插件模板/契约是「示意」，可能与项目最新基类不一致。
-- 判定前先读**真实基类**（UIPanelBase / UIViewBase 等）确认其生命周期与 API，
+- 判定前先读**真实基类**（`UIBasePanel` / `BaseView` 等）确认其生命周期与 API，
   不要把插件文档里的方法名当唯一事实来源。
 
 ## 审查维度
@@ -798,7 +764,6 @@ _由 graph/edges.jsonl 渲染_
 
 | 外部 Skill | 本 Plugin 对应 | 关系 |
 |-----------|---------------|------|
-| `atomgui` | `gui-draft` | **不依赖** — gui-draft 自包含 MVVM 模板和规则 |
 | `edit-prefab` | `gui-prefab` | **不依赖** — gui-prefab 自包含 Prefab 编辑指引 |
 | `edit-excel` | `gui-config` | **不依赖** — gui-config 自包含配置表编辑指引 |
 | `dev-gui` | `dev-gui-plugin` | **替代关系** — plugin 是新体系，旧 dev-gui 逐步迁移 |

@@ -21,24 +21,45 @@ tools: Read, Grep, Glob, LSP
 - **运行时已加载** unity-prefab / excel-config 等 MCP → 调用核实。
 - **未加载** → 该维度判为 `NOT_APPLICABLE`（缺能力，非缺陷），**禁止**仅凭推测报 CRITICAL。
 
-## 校验基准以运行期真实代码为准
+## 校验基准
 
-- 本插件模板/契约（`shared-references/`）是「示意」，可能与项目最新基类不一致。
-- 判定前先读**真实基类**（`UIPanelBase` / `UIViewBase` 等）确认其生命周期与 API，
-  不要把插件文档里的方法名当唯一事实来源（项目实际形如 `OnInstanceMethodIsEmpty` /
-  `OnContentRefresh`，与通用 Unity 命名不同）。
+- 真实基类：Panel 继承 `UIBasePanel`，View 继承 `BaseView`（事实见 `shared-references/mvvm-contract.md`）。
+- Panel 生命周期钩子：`prepareViewModel` / `initialize` / `onPanelOpen` / `onPanelRefresh` /
+  `onPanelClose` / `modifyPanelDataOnClose`；**禁 override `ctor`/`dispose`**。
+- View 生命周期：`Initialize(BaseViewModel)` → `InitializeView` + `InitializeEvents`，按需 `Destroy()`。
+- 仍建议读目标目录同类现有 panel 对齐项目最新惯例。
 
 ## 审查维度
 
 | 维度 | 检查内容 |
 |------|---------|
 | MVVM 一致性 | Panel 写 ↔ View 读 是否匹配（见 mvvm-contract.md §1） |
-| 生命周期正确性 | On*Create*/On*Destroy* 配对、事件订阅↔退订配对 |
-| 空安全 | [SerializeField] 使用前判空、回调判空 |
-| 性能反模式 | Update/FixedUpdate 中 GetComponent、字符串拼接、重复查找、每帧重建子节点 |
-| 代码规范 | 命名是否符合项目惯例、文件组织 |
+| 生命周期正确性 | 钩子配对、事件订阅↔退订配对、`onPanelClose` 清理齐全 |
+| 空安全 | `[SerializeField]` 使用前判空（`[Required]` 可免）、回调判空 |
+| 性能反模式 | Update/LateUpdate 中 GetComponent、字符串拼接、重复查找、每帧重建子节点 |
+| 代码规范 | 命名是否符合项目惯例、文件组织、优先 AtomUI* 而非裸 UGUI |
 | Prefab 绑定 | 每个 SerializeField 是否有对应 Prefab 节点（缺能力 → NOT_APPLICABLE） |
 | 配置完整性 | 配置表变更是否完整、是否改对表（缺能力 → NOT_APPLICABLE） |
+
+### AtomGUI 反模式专项 checklist（命中即按严重度报）
+
+- [ ] **C# View 反写 ViewModel** —— 只有 Lua Model 可写 VM（CRITICAL，破坏数据流）。
+- [ ] **Panel 用 `vmFactory:createViewModel()` 直建** —— 须用 `self:createViewModel()` /
+      `self:createCustomViewModelList()`（CRITICAL，内存泄漏）。
+- [ ] **手改自动生成文件** `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` /
+      `ui_viewmodel_define.lua`（CRITICAL）。`*_data.lua` 例外（配表镜像）。
+- [ ] **CustomViewModelList 改动后漏 `update()`** —— C# View 收不到通知（MAJOR）。
+- [ ] **`onPanelClose` 漏清理** —— 未 `cancelTimer` / `removeEventListener` / `dispose` 子 Lib（MAJOR，泄漏）。
+- [ ] **给 ViewModel 实例加自定义字段** —— 自定义数据应存 Panel 字段（MAJOR）。
+- [ ] **UILib eventId 超出 [0,255]** —— 路由用 `runtimeVmId*256+eventId`，越界冲突（CRITICAL）。
+- [ ] **UILib `registerEvent` 传字符串** —— 须传函数 `bdFunctor(self,"m")`（MAJOR）。
+- [ ] **ListModule Template 处于 active** —— 框架激活克隆体，会多一个静态项（MAJOR）。
+- [ ] **世界跟踪逻辑放在 ItemView 的 LateUpdate** —— `SetActive(false)` 后回调停止、永不复现；
+      须放父 View 的 LateUpdate（CRITICAL）。
+- [ ] **`transform.Find` / 路径查找固定控件** —— 应用 `[SerializeField]`（MINOR/MAJOR 视情况）。
+- [ ] **C#/Lua event ID enum 不一致** —— 必须逐项对齐（CRITICAL）。
+- [ ] **生成成功前就写引用新 VM 属性的 View/Panel 代码** —— 须走 3-Phase（CRITICAL，编译错/静默失败）。
+- [ ] **`StylesModule<TEnum>` 未设默认 `m_SelectedIndex`** 或分组不全（MAJOR，首帧空指针/显隐错）。
 
 每个问题分级：**CRITICAL**（崩溃/数据错/破坏数据流）> **MAJOR**（功能缺陷/明显性能问题）>
 **MINOR**（规范/可读性）。每条必须带 `file:line` 与具体修复建议。

@@ -24,7 +24,7 @@ description: >-
 2. spawn `gui-reviewer` subagent（用 Agent 工具，`subagent_type: "gui-reviewer"`），传入：
    - 待审代码文件
    - `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/GUI_PRD.md`
-   - 相关 `${CLAUDE_PLUGIN_ROOT}/shared-references/*.md`
+   - 相关 `${CLAUDE_PLUGIN_ROOT}/shared-references/*.md`（含 `patterns/` 下涉及的进阶模式文档）
    - **不传**任何实现叙述。
 3. subagent 按 7 维度审查（见 `agents/gui-reviewer.md`），产出 `GUI_REVIEW.md` 到 run 目录。
 4. 记录状态：
