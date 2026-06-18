@@ -8,19 +8,23 @@
 
 同一套 schema 与机械机制（`gui_knowledge.py`，root 参数化）服务**两个独立共存**的知识库：
 
-| 库 | 路径 | 性质 | 创建 |
-|----|------|------|------|
-| **私有库** | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | gui-plan 首次运行自动 init |
-| **公共库** | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | 项目共享、团队维护、走 **p4** | **仅** gui-learn 显式写入时 init |
+| 库 | 路径 | 性质 | 由谁写 | 创建 |
+|----|------|------|--------|------|
+| **私有库** | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | `gui-learn`（含 pipeline 第 8 阶段） | gui-plan 首次运行自动 init |
+| **公共库** | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | 项目共享、团队维护、走 **p4** | `gui-learn-public`（仅手动调用） | **仅** gui-learn-public 显式写入时 init |
 
 - **两库都被读**：SessionStart hook 注入、gui-plan、gui-draft 同时加载两库 query_pack。
   **公共库为权威**：两库内容若矛盾，以公共库为准（注入时公共库在前并标注）。
 - 公共库的 status 语义与私有库相同（`proposed|confirmed`，仅 `confirmed` 进各自 query_pack）。
-- **私有库去重职责**：私有库通用层条目在 **promote / demote** 时，对公共库做查重——
-  `gui_knowledge.py find-dedup-candidates` 机械初筛同主题候选（同 type + slug-token 相似），
-  再由 `gui-reviewer` 做语义裁决（`none|duplicate|conflict`）。`duplicate`/`conflict` → **以公共库为准，
-  `gui_knowledge.py remove` 硬删私有条目**（记 `superseded-by`）。公共库自身不对私有库去重。
-- **p4**：写公共库的工具只动文件系统，**不自动调 p4**；gui-learn 收尾提醒用户手动 `p4 edit/add/delete` + submit。
+- **私有库去重职责**（公共库永远不对私有库去重）。机械初筛同主题候选用
+  `gui_knowledge.py find-dedup-candidates`（单条 / `--all` 全量；同 type + slug-token 相似），
+  再由 `gui-reviewer` 做语义裁决（`none|duplicate|conflict`）；`duplicate`/`conflict` → **以公共库为准，
+  `gui_knowledge.py remove` 硬删私有条目**（记 `superseded-by`）。两个触发时机：
+  - **点查**：`gui-learn` 在私有库条目 **promote / demote** 时，对该条查公共库。
+  - **全量 sweep**：`gui-learn-public` 沉淀进公共库后，对私有库**全量**（`--all`）查一次——
+    公共库刚增长，私有库里被它覆盖/矛盾的旧条目即时收敛删除。
+- **p4**：写公共库的工具只动文件系统，**不自动调 p4**；`gui-learn-public` 收尾提醒用户手动
+  `p4 edit/add/delete` + submit。
 
 ## 全局约定（借鉴 ARIS，plan §十）
 

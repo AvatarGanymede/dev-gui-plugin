@@ -42,7 +42,7 @@ Usage:
     python3 gui_knowledge.py find-existing <root> --type component --slug styles-module
     python3 gui_knowledge.py promote <root> <node_id> --reviewer <name> --verdict-id <handle>
     python3 gui_knowledge.py demote <root> <node_id> [--reason "..."]
-    python3 gui_knowledge.py find-dedup-candidates <node_id> --root <private> --public-root <public>
+    python3 gui_knowledge.py find-dedup-candidates [<node_id> | --all] --root <private> --public-root <public>
     python3 gui_knowledge.py remove <root> <node_id> [--reason "..."] [--superseded-by <node_id>]
     python3 gui_knowledge.py stats <root>
     python3 gui_knowledge.py log <root> "<message>"
@@ -600,37 +600,18 @@ def _page_excerpt(path: Path, meta: dict, limit: int = 200) -> str:
     return ""
 
 
-def find_dedup_candidates(node_id: str, root_str: str, public_root_str: str,
-                          threshold: float = DEDUP_JACCARD) -> None:
-    """Mechanical pre-filter for private→public dedup (dual-KB model).
-
-    Given a PRIVATE general-layer node_id, print a JSON list of same-topic
-    candidate entries in the PUBLIC KB. Deterministic / zero-LLM: this only
-    NARROWS the field — the keep/delete decision is the reviewer's semantic
-    verdict, and the public KB wins on duplicate/conflict.
+def _candidates_for(spath: Path, smeta: dict, pub_pages: list, threshold: float) -> list[dict]:
+    """Same-topic PUBLIC candidates for one PRIVATE general-layer page.
 
     Match: same `type` AND (identical slug OR ≥2 shared slug-tokens OR
-    slug-token Jaccard ≥ `threshold`). Empty / missing public KB → `[]`.
+    slug-token Jaccard ≥ `threshold`). `pub_pages` is a pre-collected list of
+    (path, meta, node_id) from the public KB.
     """
-    priv = Path(root_str)
-    pub = Path(public_root_str)
-    src = None
-    for path, meta, nid in _iter_pages(priv):
-        if nid == node_id:
-            src = (path, meta)
-            break
-    if src is None:
-        print(f"error: no page with node_id {node_id!r} in {priv}", file=sys.stderr)
-        sys.exit(1)
-    spath, smeta = src
     styp = smeta.get("type")
-    if styp not in _GENERAL_LAYER or not pub.exists():
-        print("[]")
-        return
     sslug = _page_slug(spath, smeta)
     stoks = {t for t in sslug.split("-") if t}
     out: list[dict] = []
-    for path, meta, nid in _iter_pages(pub):
+    for path, meta, nid in pub_pages:
         if meta.get("type") != styp:
             continue
         cslug = _page_slug(path, meta)
@@ -649,7 +630,60 @@ def find_dedup_candidates(node_id: str, root_str: str, public_root_str: str,
                 "excerpt": _page_excerpt(path, meta),
             })
     out.sort(key=lambda c: c["jaccard"], reverse=True)
-    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return out
+
+
+def find_dedup_candidates(node_id: str | None, root_str: str, public_root_str: str,
+                          threshold: float = DEDUP_JACCARD, all_mode: bool = False) -> None:
+    """Mechanical pre-filter for private→public dedup (dual-KB model).
+
+    Deterministic / zero-LLM: this only NARROWS the field — the keep/delete
+    decision is the reviewer's semantic verdict, and the public KB wins on
+    duplicate/conflict.
+
+    - Single (node_id given): print a JSON list of same-topic PUBLIC candidates
+      for that one private entry.
+    - Sweep (`--all`): scan EVERY private general-layer entry and print a JSON
+      list of `{node_id, title, candidates: [...]}` for those WITH ≥1 candidate
+      (the work-list gui-learn-public hands to the reviewer after sedimenting).
+
+    Empty / missing public KB → `[]`.
+    """
+    priv = Path(root_str)
+    pub = Path(public_root_str)
+    pub_pages = list(_iter_pages(pub)) if pub.exists() else []
+
+    if all_mode:
+        out: list[dict] = []
+        if pub_pages:
+            for spath, smeta, snid in _iter_pages(priv):
+                if smeta.get("type") not in _GENERAL_LAYER:
+                    continue
+                cands = _candidates_for(spath, smeta, pub_pages, threshold)
+                if cands:
+                    out.append({
+                        "node_id": snid,
+                        "title": _page_title(spath, smeta),
+                        "status": smeta.get("status", ""),
+                        "candidates": cands,
+                    })
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return
+
+    src = None
+    for path, meta, nid in _iter_pages(priv):
+        if nid == node_id:
+            src = (path, meta)
+            break
+    if src is None:
+        print(f"error: no page with node_id {node_id!r} in {priv}", file=sys.stderr)
+        sys.exit(1)
+    spath, smeta = src
+    if smeta.get("type") not in _GENERAL_LAYER or not pub_pages:
+        print("[]")
+        return
+    print(json.dumps(_candidates_for(spath, smeta, pub_pages, threshold),
+                     ensure_ascii=False, indent=2))
 
 
 def remove_entry(root_str: str, node_id: str, reason: str = "", superseded_by: str = "") -> None:
@@ -707,7 +741,7 @@ def main() -> int:
     s = sub.add_parser("find-existing"); s.add_argument("root"); s.add_argument("--type", required=True); s.add_argument("--slug", required=True)
     s = sub.add_parser("promote"); s.add_argument("root"); s.add_argument("node_id"); s.add_argument("--reviewer", required=True); s.add_argument("--verdict-id", required=True)
     s = sub.add_parser("demote"); s.add_argument("root"); s.add_argument("node_id"); s.add_argument("--reason", default="")
-    s = sub.add_parser("find-dedup-candidates"); s.add_argument("node_id"); s.add_argument("--root", required=True); s.add_argument("--public-root", required=True); s.add_argument("--threshold", type=float, default=DEDUP_JACCARD)
+    s = sub.add_parser("find-dedup-candidates"); s.add_argument("node_id", nargs="?", default=None); s.add_argument("--root", required=True); s.add_argument("--public-root", required=True); s.add_argument("--threshold", type=float, default=DEDUP_JACCARD); s.add_argument("--all", dest="all_mode", action="store_true")
     s = sub.add_parser("remove"); s.add_argument("root"); s.add_argument("node_id"); s.add_argument("--reason", default=""); s.add_argument("--superseded-by", dest="superseded_by", default="")
     s = sub.add_parser("stats"); s.add_argument("root")
     s = sub.add_parser("log"); s.add_argument("root"); s.add_argument("message")
@@ -732,7 +766,10 @@ def main() -> int:
     elif a.cmd == "demote":
         demote(a.root, a.node_id, a.reason)
     elif a.cmd == "find-dedup-candidates":
-        find_dedup_candidates(a.node_id, a.root, a.public_root, a.threshold)
+        if not a.all_mode and not a.node_id:
+            print("error: find-dedup-candidates needs a node_id or --all", file=sys.stderr)
+            return 2
+        find_dedup_candidates(a.node_id, a.root, a.public_root, a.threshold, a.all_mode)
     elif a.cmd == "remove":
         remove_entry(a.root, a.node_id, a.reason, a.superseded_by)
     elif a.cmd == "stats":

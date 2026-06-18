@@ -56,14 +56,15 @@ claude --plugin-dir /path/to/dev-gui-plugin
 # 单独使用（仍对用户可见的入口）
 /dev-gui-plugin:gui-plan            # 手动从头跑 pipeline（软串联）
 /dev-gui-plugin:gui-review          # 仅审查已有 GUI 代码
-/dev-gui-plugin:gui-learn           # 沉淀知识（捕获遍）
+/dev-gui-plugin:gui-learn           # 沉淀知识到【私有库】（捕获遍）
 /dev-gui-plugin:gui-learn enrich    # 充实遍：填通用层 _TODO_ 段（--max N 限批量）
+/dev-gui-plugin:gui-learn-public    # 沉淀知识到【项目公共库】（团队共享/走 p4），并对私有库做去重 sweep
 ```
 
 > **表现层隐藏**：`gui-draft` / `gui-prefab` / `gui-config` / `gui-verify` / `gui-improve`
 > 这 5 个纯中间阶段在 frontmatter 设了 `user-invocable: false` —— **不出现在 `/` 菜单、用户无法手动调用**，
 > 但 Claude 仍可在 pipeline 中自动调用（其 description 始终在上下文里）。
-> 用户可见入口收敛为：`/dev-gui-plugin:run`（全自动）、`gui-plan`、`gui-review`、`gui-learn`。
+> 用户可见入口收敛为：`/dev-gui-plugin:run`（全自动）、`gui-plan`、`gui-review`、`gui-learn`、`gui-learn-public`。
 
 > **命名空间**：插件命令的前缀是插件名，故命令实际为 `/dev-gui-plugin:run`。
 > 若想用更短的 `/dev-gui:run`，需把插件改名为 `dev-gui`（`plugin.json` + `marketplace.json` 的 `name`）。
@@ -99,7 +100,7 @@ claude --plugin-dir /path/to/dev-gui-plugin
 |------|------|---------|
 | `${CLAUDE_PLUGIN_ROOT}/` | 插件本体（skills/agents/hooks/tools/shared-references/seed） | 更新即替换（只读/易失） |
 | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | **私有**长期知识库（bugs/fixes/components/patterns/lessons/graph/query_pack） | 跨版本存活、个人、不进 git |
-| `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | **公共**长期知识库（同结构）；团队共享、走 p4 | 仅 gui-learn 显式 `public` 写入时创建 |
+| `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | **公共**长期知识库（同结构）；团队共享、走 p4 | 仅 `gui-learn-public` 写入时创建 |
 | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/` | per-run 产物（PRD/REVIEW/VERDICT/IMPROVEMENT_LOG/HUMAN_REVIEW/run_state） | 一次性、项目本地、gitignored |
 
 > 建议在项目 `.gitignore` 加入 `/.claude/dev-gui-runs/`。
@@ -112,7 +113,7 @@ dev-gui-plugin/
 │   ├── plugin.json         # 插件清单
 │   └── marketplace.json    # 市场清单（本仓库即 marketplace）
 ├── commands/run.md         # 一键全自动编排命令（/dev-gui-plugin:run）
-├── skills/                 # 8 个 skill（gui-plan … gui-learn）
+├── skills/                 # 9 个 skill（gui-plan … gui-learn / gui-learn-public）
 ├── agents/gui-reviewer.md  # 审查 / 晋升背书 subagent
 ├── hooks/hooks.json        # SessionStart 注入 query_pack；PreToolUse(Write|Edit) 跑 capture_filter；Stop 驱动 pipeline 串联
 ├── hooks-handlers/         # on_session_start.py · pre_write_filter.py · on_stop_continue.py（统一 Python）

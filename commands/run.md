@@ -78,7 +78,7 @@ printf '{"nudges":0,"max_nudges":30,"command":"dev-gui:run"}' \
 | 5 | `gui-review` | spawn 独立 reviewer（Bias Guard）产出 `GUI_REVIEW.md` | — |
 | 6 | `gui-improve` | **仅当 review 有 CRITICAL 时执行**（最多 2 轮）；**无 CRITICAL → `set gui-improve skipped`** | `skipped` |
 | 7 | `gui-verify` | Type-A/B 验证 → `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | — |
-| 8 | `gui-learn` | 知识沉淀（捕获遍）**默认回写私有库** `${CLAUDE_PLUGIN_DATA}/gui-knowledge/`（仅显式 `public` 才写项目公共库） | — |
+| 8 | `gui-learn` | 知识沉淀（捕获遍）回写**私有库** `${CLAUDE_PLUGIN_DATA}/gui-knowledge/`（沉淀进项目公共库是独立的手动 skill `gui-learn-public`，不在本自动流程内） | — |
 
 > 注意阶段执行顺序：review(5) 先于 verify。若 review 报 CRITICAL，则在 verify 前先跑
 > gui-improve（修复→重新审查，最多 2 轮）；2 轮后仍有 CRITICAL 记入 `HUMAN_REVIEW.md` 不暂停。
