@@ -910,6 +910,7 @@ ARIS 有 ~10,285 行 Python/Shell 代码（30 个文件），以下是迁移到 
 | 知识沉淀借鉴 ARIS Karpathy-Wiki | 用户决定，6 机制整合见 §十：两遍式 scaffold→enrich、实例→类级规则、确定性 query_pack、capture_filter 四类、关联自动渲染、通用层晋升需 reviewer。全部与 PLUGIN_DATA/不耦合外部 MCP/无跨模型/Python hook 兼容 |
 | query_pack 装配确定性、零 LLM | 借 `research_wiki.rebuild_query_pack`：分段定额、抽一句话、回退换行、装配后注入扫描。内容由 LLM 写(捕获/充实)，摘要由脚本装(可重复、便宜) |
 | 通用层 status: proposed→confirmed | ⑥ 拒/纳不对称：机械筛只能拒；进 query_pack(load-bearing)需独立 reviewer 背书。无跨模型时用 Bias Guard subagent 替代 jury，如实标注其较弱 |
+| 双库共存（私有 + 项目公共） | 用户决定。私有库 `${CLAUDE_PLUGIN_DATA}/gui-knowledge`（个人、不进 git）+ 公共库 `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge`（团队共享、走 p4）。两库共读、公共库为权威；私有库在 promote/demote 时对公共库语义去重（reviewer 判 duplicate/conflict → 公共库为准删私有条目）。gui-learn 默认写私有、显式 `public` 才写公共；工具不自动调 p4（仅提醒）。详见 §十.9 |
 
 ---
 
@@ -974,6 +975,25 @@ ARIS 有 ~10,285 行 Python/Shell 代码（30 个文件），以下是迁移到 
 ### 十.7 去重与冲突（`research_wiki.find_existing`）
 - 写通用层前按 slug 查已有条目：不存在→新建；存在且互补→追加段；存在且**冲突**→
   标 `conflict` 入队人工 / reviewer 裁决，不静默覆盖。对应 gui-learn B 段「新增 vs 补充 vs 冲突」三态。
+- 上述是**单库内**（同 root）的查重；跨库（私有 vs 公共）去重见 §十.9。
+
+### 十.9 双库模型与私有库去重
+两个独立共存的知识库，同一套 `gui_knowledge.py`（root 参数化）机制：
+
+| 库 | 路径 | 性质 | 创建 |
+|----|------|------|------|
+| 私有库 | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | gui-plan 首次运行自动 init |
+| 公共库 | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | 项目共享、团队维护、走 p4 | 仅 gui-learn 显式写入时 init |
+
+- **共读**：SessionStart 注入、gui-plan、gui-draft 同时加载两库 query_pack；**公共库为权威**，矛盾以公共库为准。
+- **gui-learn 写入目标**：默认私有库；用户显式声明（参数 `public`）才写公共库。
+- **私有库去重**（仅私有库，在 `promote`/`demote` 时）：`find-dedup-candidates` 机械初筛公共库同主题候选
+  （同 type + slug-token 相似，确定性零 LLM）→ `gui-reviewer` 语义裁决 `none|duplicate|conflict`
+  → `duplicate`/`conflict` 以公共库为准、`remove` 硬删私有条目（记 superseded-by）。
+- **新增命令**：`demote`（confirmed→proposed，属「拒」无需背书）、`find-dedup-candidates`（机械初筛）、
+  `remove`（删条目+剔边+记 log）。
+- **p4**：工具不自动调 p4，写公共库后由 gui-learn 收尾提醒用户手动 check out + submit。
+- **反自毒筛**：PreToolUse(Write) hook 覆盖两库路径（`gui-knowledge/` 与 `dev-gui-knowledge/`）。
 
 ### 十.8 ARIS 出处对照
 | 机制 | ARIS 出处 |

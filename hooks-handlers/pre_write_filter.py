@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """PreToolUse(Write|Edit) hook — anti-self-poisoning filter for gui-knowledge writes.
 
-When a Write/Edit targets a path under the persistent knowledge base
-(``${CLAUDE_PLUGIN_DATA}/gui-knowledge/``), screen the content with
+When a Write/Edit targets a path under EITHER knowledge base — the private one
+(``${CLAUDE_PLUGIN_DATA}/gui-knowledge/``) or the project-public one
+(``${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/``) — screen the content with
 capture_filter.py before it lands. If it trips a class (env failure / transient
 error / negative-tool claim / single-instance narrative), DENY the write with a
 reason telling the agent to store the fix / the class-level rule instead — so
 operational noise never hardens into "knowledge" (plan §十.4).
 
-Scope is deliberately narrow: writes that are NOT under gui-knowledge are always
-allowed (this hook only guards the knowledge base, not normal code edits).
+Scope is deliberately narrow: writes that are NOT under a knowledge base are
+always allowed (this hook only guards the knowledge bases, not normal code edits).
 
 Fails OPEN: any parsing/import error → allow, never block on the filter's own
 failure. Asymmetry holds — this mechanical screen may only REJECT a capture;
@@ -46,6 +47,10 @@ def _is_knowledge_path(file_path: str) -> bool:
     norm = file_path.replace("\\", "/")
     if "gui-knowledge" not in norm:
         return False
+    # Project-public KB: ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/
+    if "/dev-gui-knowledge/" in norm or norm.endswith("/dev-gui-knowledge"):
+        return True
+    # Private KB: ${CLAUDE_PLUGIN_DATA}/gui-knowledge/
     data = os.environ.get("CLAUDE_PLUGIN_DATA")
     if data:
         data_norm = data.replace("\\", "/").rstrip("/")

@@ -2,9 +2,11 @@
 name: gui-learn
 description: >-
   Atom Game GUI pipeline 第 8 阶段（每次修 bug / 做需求完成后必做），也可单独调用沉淀知识。
-  从本次开发提取经验回写长期知识库 ${CLAUDE_PLUGIN_DATA}/gui-knowledge/：建实例层 bug/fix、
-  泛化出通用层 component/pattern/lesson、写 edges、独立 reviewer 晋升 proposed→confirmed、
-  重建 query_pack。两遍式：默认捕获遍；`enrich` 参数触发充实遍填 _TODO_ 段。
+  从本次开发提取经验回写长期知识库（默认私有库 ${CLAUDE_PLUGIN_DATA}/gui-knowledge/；
+  仅当用户显式声明 `public` 才写项目公共库 ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/）：
+  建实例层 bug/fix、泛化出通用层 component/pattern/lesson、写 edges、独立 reviewer 晋升
+  proposed→confirmed、重建 query_pack；私有库 promote/demote 时对公共库语义去重（公共库为准）。
+  两遍式：默认捕获遍；`enrich` 参数触发充实遍填 _TODO_ 段。
 ---
 
 # Phase 8: gui-learn — 知识沉淀
@@ -12,10 +14,22 @@ description: >-
 **职责**：从本次开发中提取经验回写知识库。**核心是「泛化」**——不只记「这个 panel 发生了什么」，
 更要抽出**可跨 panel 复用**的通用教训/组件用法/性能经验。
 
-> 写入目标一律 **`${CLAUDE_PLUGIN_DATA}/gui-knowledge/`**（跨版本存活、不进 git）。
-> 首次写入前若目录不存在，先 `gui_knowledge.py init`（gui-plan 通常已建）。
+## 写入目标（双库模型）
+
+存在两个独立共存的知识库，本次沉淀只写其一，由 **`$KB_ROOT`** 指向：
+
+- **默认 = 私有库**：`$KB_ROOT = ${CLAUDE_PLUGIN_DATA}/gui-knowledge`（个人、跨版本存活、不进 git）。
+- **仅当用户显式声明**写项目/公共库（skill 参数 `public`，或自然语言「写入项目库/公共知识库」）：
+  `$KB_ROOT = ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge`（团队共享、走 p4）。
+  - 公共库**仅在显式写入时才创建**：若目录不存在先 `gui_knowledge.py init "$KB_ROOT"`。
+  - 公共库走 p4，本 skill **不自动调 p4**；收尾按「## 收尾：公共库 p4 提醒」列出改动文件提醒用户手动 check out。
+
+下文所有 `gui_knowledge.py` 命令的 root 一律用 `"$KB_ROOT"`。首次写入前若目录不存在，先
+`gui_knowledge.py init "$KB_ROOT"`（私有库 gui-plan 通常已建）。
+
 > Schema 见 `${CLAUDE_PLUGIN_ROOT}/shared-references/knowledge-schema.md`。
 > 机制总纲见 plan §十 与 `acceptance-gate.md`。
+> **私有库去重**：仅当 `$KB_ROOT` = 私有库时，promote / demote 要对公共库查重（见第 7 步与 demote 流程）。
 
 **触发条件**：每次修 bug 或做需求完成（PASS 或 2 轮 improve 结束）。即使本次无 panel 级产物
 （纯逻辑/性能修复），只要学到可复用的东西也必须沉淀到通用层。
@@ -47,7 +61,7 @@ echo "<条目正文>" | python3 "${CLAUDE_PLUGIN_ROOT}/tools/capture_filter.py" 
 写每条通用层条目前先查重（§十.7，三态：新增 / 补充 / 冲突）：
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" find-existing \
-    "${CLAUDE_PLUGIN_DATA}/gui-knowledge" --type lesson --slug <slug>
+    "$KB_ROOT" --type lesson --slug <slug>
 ```
 - 空输出 → 新建条目（`status: proposed`，通用层段落留 `_TODO._`）。
 - 已存在且互补 → 追加段。
@@ -61,30 +75,46 @@ python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" find-existing \
 
 6. **写关系图 + 渲染关联**：
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" add-edge "${CLAUDE_PLUGIN_DATA}/gui-knowledge" \
+   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" add-edge "$KB_ROOT" \
        --from bug:B001 --to component:styles-module --type caused_by
-   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" render-connections "${CLAUDE_PLUGIN_DATA}/gui-knowledge"
+   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" render-connections "$KB_ROOT"
    ```
    （⑤ 图是真相源，各页「## 关联」段由脚本重渲染，禁手编。）
 
-7. **晋升 load-bearing（⑥ 拒/纳不对称）**：通用层条目默认 `proposed`，要进 query_pack 必须经
-   **独立 reviewer 背书**。spawn `gui-reviewer` subagent（全新上下文）批量判定每条
-   「确为类级、正确、可复用」，对其 `confirm` 的条目执行：
+7. **晋升 load-bearing + 对公共库去重（⑥ 拒/纳不对称）**：通用层条目默认 `proposed`，要进
+   query_pack 必须经 **独立 reviewer 背书**。
+
+   **7a. 机械初筛公共库候选**（仅 `$KB_ROOT` = 私有库时；直接写公共库不做此步）。对每条待晋升
+   私有条目跑：
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" promote "${CLAUDE_PLUGIN_DATA}/gui-knowledge" \
-       lesson:L004 --reviewer gui-reviewer --verdict-id <背书产物>
+   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" find-dedup-candidates lesson:L004 \
+       --root "$KB_ROOT" --public-root "${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge"
    ```
-   机械筛只能「拒」，「纳」必须 reviewer 背书。
+   输出公共库同主题候选（node_id/title/excerpt）；`[]` 表示公共库无覆盖。
+
+   **7b. spawn `gui-reviewer` subagent（全新上下文）批量裁决**，对每条私有条目同时判：
+   ① 「确为类级、正确、可复用」（背书）；② 与 7a 候选的语义关系，三态之一：
+   - `confirm`：公共库无语义覆盖 → 晋升：
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" promote "$KB_ROOT" \
+         lesson:L004 --reviewer gui-reviewer --verdict-id <背书产物>
+     ```
+   - `duplicate`（语义相似/相近）**或** `conflict`（语义矛盾）→ **以公共库为准，删私有条目**（不晋升）：
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" remove "$KB_ROOT" \
+         lesson:L004 --reason duplicate-of-public --superseded-by <公共 node_id>
+     ```
+   机械筛只能「拒」，「纳」（promote）必须 reviewer 背书；7a 只是缩小候选，删/留由 reviewer 语义裁决。
 
 8. **重建 query_pack + 索引**（确定性、只收 confirmed）：
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" rebuild-index "${CLAUDE_PLUGIN_DATA}/gui-knowledge"
-   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" rebuild-query-pack "${CLAUDE_PLUGIN_DATA}/gui-knowledge"
+   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" rebuild-index "$KB_ROOT"
+   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" rebuild-query-pack "$KB_ROOT"
    ```
 
 9. **追加 log**：
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" log "${CLAUDE_PLUGIN_DATA}/gui-knowledge" \
+   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" log "$KB_ROOT" \
        "panelId=XXX verdict=PASS | lesson L004(confirmed): 列表优先 ListModule 复用"
    ```
 
@@ -92,6 +122,31 @@ python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" find-existing \
     ```bash
     python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_run_state.py" set "${CLAUDE_PROJECT_DIR}" <panelId> gui-learn done
     ```
+
+### D. 降级（demote）—— confirmed 条目不再成立时
+
+当某私有库 confirmed 通用层条目被推翻（reviewer 复审否定 / 被新证据取代 / 用户显式要求降级）：
+
+1. **降级**（撤销 load-bearing，属「拒」，**无需 reviewer 背书**）：
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" demote "$KB_ROOT" \
+       lesson:L004 --reason "<为何不再成立>"
+   ```
+2. **降级时同样对公共库去重**（仅私有库）：跑第 7a 的 `find-dedup-candidates` + reviewer 语义判；
+   若公共库现已覆盖（`duplicate`/`conflict`）→ 改用 `remove`（公共库为准）而非停留在 proposed。
+3. 之后重跑第 8 步 `rebuild-index` / `rebuild-query-pack`（query_pack 只收 confirmed，降级/删除即生效）。
+
+### 收尾：公共库 p4 提醒（仅 `$KB_ROOT` = 公共库时）
+
+本 skill 不自动调 p4。写完后**提醒用户手动 check out 并 submit**，并列出本次在
+`${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` 下新增/改动/删除的文件，例如：
+```
+本次写入公共知识库（走 p4，未自动 check out）。请手动：
+  p4 edit   <改动的文件...>
+  p4 add    <新增的文件...>
+  p4 delete <删除的文件...>
+然后 p4 submit。
+```
 
 ---
 

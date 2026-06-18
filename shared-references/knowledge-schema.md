@@ -4,13 +4,32 @@
 > **实例层** `bug` / `fix`（带 panelId，记录发生了什么） · **通用层** `component` / `pattern` /
 > `lesson`（脱离 panel 可复用，是 query_pack 优先加载、后续任务真正参考的部分）。
 
+## 两个知识库（双库模型）
+
+同一套 schema 与机械机制（`gui_knowledge.py`，root 参数化）服务**两个独立共存**的知识库：
+
+| 库 | 路径 | 性质 | 创建 |
+|----|------|------|------|
+| **私有库** | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | gui-plan 首次运行自动 init |
+| **公共库** | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | 项目共享、团队维护、走 **p4** | **仅** gui-learn 显式写入时 init |
+
+- **两库都被读**：SessionStart hook 注入、gui-plan、gui-draft 同时加载两库 query_pack。
+  **公共库为权威**：两库内容若矛盾，以公共库为准（注入时公共库在前并标注）。
+- 公共库的 status 语义与私有库相同（`proposed|confirmed`，仅 `confirmed` 进各自 query_pack）。
+- **私有库去重职责**：私有库通用层条目在 **promote / demote** 时，对公共库做查重——
+  `gui_knowledge.py find-dedup-candidates` 机械初筛同主题候选（同 type + slug-token 相似），
+  再由 `gui-reviewer` 做语义裁决（`none|duplicate|conflict`）。`duplicate`/`conflict` → **以公共库为准，
+  `gui_knowledge.py remove` 硬删私有条目**（记 `superseded-by`）。公共库自身不对私有库去重。
+- **p4**：写公共库的工具只动文件系统，**不自动调 p4**；gui-learn 收尾提醒用户手动 `p4 edit/add/delete` + submit。
+
 ## 全局约定（借鉴 ARIS，plan §十）
 
 - (a) 各条目「## 关联」段由 `graph/edges.jsonl` **自动渲染**（`gui_knowledge.py render-connections`），
   **禁止手编**（⑤）。
 - (b) 通用层条目按 **scaffold→enrich 两遍式**写：捕获遍留 `_TODO._`，充实遍填（②）。
 - (c) 通用层条目带 `status: proposed|confirmed`，仅 `confirmed` 进 query_pack（⑥）；
-  晋升须经独立 reviewer 背书（`gui_knowledge.py promote`）。
+  晋升须经独立 reviewer 背书（`gui_knowledge.py promote`）；降级 `gui_knowledge.py demote`
+  撤销 load-bearing（属「拒」，无需背书）。
 
 ## node_id 约定
 

@@ -98,7 +98,8 @@ claude --plugin-dir /path/to/dev-gui-plugin
 | 位置 | 内容 | 生命周期 |
 |------|------|---------|
 | `${CLAUDE_PLUGIN_ROOT}/` | 插件本体（skills/agents/hooks/tools/shared-references/seed） | 更新即替换（只读/易失） |
-| `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 长期知识库（bugs/fixes/components/patterns/lessons/graph/query_pack） | 跨版本存活、不进 git |
+| `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | **私有**长期知识库（bugs/fixes/components/patterns/lessons/graph/query_pack） | 跨版本存活、个人、不进 git |
+| `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | **公共**长期知识库（同结构）；团队共享、走 p4 | 仅 gui-learn 显式 `public` 写入时创建 |
 | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/` | per-run 产物（PRD/REVIEW/VERDICT/IMPROVEMENT_LOG/HUMAN_REVIEW/run_state） | 一次性、项目本地、gitignored |
 
 > 建议在项目 `.gitignore` 加入 `/.claude/dev-gui-runs/`。
@@ -128,7 +129,7 @@ dev-gui-plugin/
 
 | 工具 | 用途 |
 |------|------|
-| `gui_knowledge.py` | 知识库引擎：init / add-edge / render-connections / rebuild-query-pack / rebuild-index / find-existing / promote / stats / log |
+| `gui_knowledge.py` | 知识库引擎：init / add-edge / render-connections / rebuild-query-pack / rebuild-index / find-existing / promote / demote / find-dedup-candidates / remove / stats / log |
 | `gui_run_state.py` | Pipeline 状态机：8 阶段、done vs accepted、resume、原子写入 + 文件锁 |
 | `capture_filter.py` | 写入前机械筛：env / transient / negative-tool / single-instance 四类 |
 | `threat_scan.py` | query_pack 装配后注入扫描（命中加 DATA 横幅） |

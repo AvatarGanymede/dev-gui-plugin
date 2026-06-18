@@ -10,7 +10,8 @@ description: >-
 # Phase 2: gui-draft — MVVM 代码生成
 
 **职责**：自包含的 MVVM 代码生成。**控制：代码实现漂移。**
-输入：`GUI_PRD.md` + `${CLAUDE_PLUGIN_DATA}/gui-knowledge/query_pack.md`。
+输入：`GUI_PRD.md` + 两库 query_pack（私有 `${CLAUDE_PLUGIN_DATA}/gui-knowledge/query_pack.md`
++ 公共 `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/query_pack.md`，后者存在则读；矛盾以公共库为准）。
 
 > 动手前先读 `${CLAUDE_PLUGIN_ROOT}/shared-references/mvvm-contract.md`。
 
@@ -86,7 +87,7 @@ public class PanelNameView : BaseView
 
 ## 流程
 
-1. 读 GUI_PRD.md + query_pack 相关坑点。
+1. 读 GUI_PRD.md + 两库 query_pack（私有 + 公共，公共优先）相关坑点。
 2. 读目标目录下**同类现有 panel** 与真实基类，对齐命名/生命周期/惯例。
 3. 判断模式：列表 / 可复用组件 / 世界坐标跟踪等场景先查 `shared-references/patterns/`（决策树见 `patterns/README.md`）。
 4. 生成 Panel.lua + View.cs（+ 走 3-Phase 处理 ViewModel 新增）。

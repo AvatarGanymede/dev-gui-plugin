@@ -41,6 +41,9 @@ Usage:
     python3 gui_knowledge.py rebuild-index <root>
     python3 gui_knowledge.py find-existing <root> --type component --slug styles-module
     python3 gui_knowledge.py promote <root> <node_id> --reviewer <name> --verdict-id <handle>
+    python3 gui_knowledge.py demote <root> <node_id> [--reason "..."]
+    python3 gui_knowledge.py find-dedup-candidates <node_id> --root <private> --public-root <public>
+    python3 gui_knowledge.py remove <root> <node_id> [--reason "..."] [--superseded-by <node_id>]
     python3 gui_knowledge.py stats <root>
     python3 gui_knowledge.py log <root> "<message>"
 """
@@ -84,6 +87,11 @@ _ID_FIELD = {
     "pattern": "slug",
 }
 _GENERAL_LAYER = {"component", "pattern", "lesson"}
+
+# Dual-KB dedup: slug-token Jaccard threshold for the mechanical candidate
+# pre-filter (find-dedup-candidates). This only NARROWS the field; the actual
+# keep/delete decision is the reviewer's semantic verdict (public KB wins).
+DEDUP_JACCARD = 0.34
 
 VALID_EDGE_TYPES = {
     "caused_by", "generalizes", "fixes", "relates_to",
@@ -519,6 +527,166 @@ def promote(root_str: str, node_id: str, reviewer: str, verdict_id: str) -> None
     print(f"promoted {node_id} → confirmed (by {reviewer})")
 
 
+def demote(root_str: str, node_id: str, reason: str = "") -> None:
+    """Flip a general-layer entry `status: confirmed` → `proposed`.
+
+    Asymmetry (⑥): removing load-bearing status is a "reject" — it needs NO
+    reviewer endorsement (only promotion does). Used when a confirmed rule no
+    longer holds (reviewer reversal / superseded) or before re-judging dedup.
+    """
+    root = Path(root_str)
+    target = None
+    for path, meta, nid in _iter_pages(root):
+        if nid == node_id:
+            target = (path, meta)
+            break
+    if target is None:
+        print(f"error: no page with node_id {node_id!r}", file=sys.stderr)
+        sys.exit(1)
+    path, meta = target
+    if meta.get("type") not in _GENERAL_LAYER:
+        print(f"error: {node_id} is not a general-layer entry (only component/pattern/lesson "
+              f"carry status).", file=sys.stderr)
+        sys.exit(1)
+    content = path.read_text(encoding="utf-8")
+    if re.search(r"^status:\s*", content, re.M):
+        content = re.sub(r"^status:\s*\w+\s*$", "status: proposed", content, count=1, flags=re.M)
+    else:
+        content = re.sub(r"^---\n", "---\nstatus: proposed\n", content, count=1)
+    # Drop stale endorsement provenance — it no longer holds after demotion.
+    content = re.sub(r"^confirmed_by:.*\n", "", content, count=1, flags=re.M)
+    path.write_text(content, encoding="utf-8")
+    msg = f"demote: {node_id} → proposed" + (f" (reason={reason})" if reason else "")
+    append_log(root_str, msg)
+    print(f"demoted {node_id} → proposed")
+
+
+# ── dual-KB dedup (private vs project-public) ─────────────────────
+
+
+def _page_title(path: Path, meta: dict) -> str:
+    """Human title of a page: frontmatter title/display_name, else H1, else slug."""
+    t = meta.get("title") or meta.get("display_name")
+    if t:
+        return t
+    for line in path.read_text(encoding="utf-8").split("\n"):
+        if line.startswith("# "):
+            return line[2:].strip()
+    return meta.get("slug") or path.stem
+
+
+def _page_slug(path: Path, meta: dict) -> str:
+    """Cross-KB match key: frontmatter slug if present, else slugify(title).
+
+    lesson_id (L004) is a per-KB counter and never matches across KBs, so we
+    key on the title-derived slug for ALL general-layer types instead.
+    """
+    return meta.get("slug") or slugify(_page_title(path, meta))
+
+
+def _page_excerpt(path: Path, meta: dict, limit: int = 200) -> str:
+    """One-sentence gist for the reviewer to judge semantic overlap against."""
+    content = path.read_text(encoding="utf-8")
+    for sec in ("类级规则", "已知坑点", "性能特征", "反模式", "最佳实践"):
+        s = _first_sentence(_section(content, sec))
+        if s:
+            return s[:limit]
+    for line in content.split("\n"):
+        ln = line.strip()
+        if ln and not ln.startswith("#") and not ln.startswith("---") and not ln.startswith("type:"):
+            s = _first_sentence(ln)
+            if s:
+                return s[:limit]
+    return ""
+
+
+def find_dedup_candidates(node_id: str, root_str: str, public_root_str: str,
+                          threshold: float = DEDUP_JACCARD) -> None:
+    """Mechanical pre-filter for private→public dedup (dual-KB model).
+
+    Given a PRIVATE general-layer node_id, print a JSON list of same-topic
+    candidate entries in the PUBLIC KB. Deterministic / zero-LLM: this only
+    NARROWS the field — the keep/delete decision is the reviewer's semantic
+    verdict, and the public KB wins on duplicate/conflict.
+
+    Match: same `type` AND (identical slug OR ≥2 shared slug-tokens OR
+    slug-token Jaccard ≥ `threshold`). Empty / missing public KB → `[]`.
+    """
+    priv = Path(root_str)
+    pub = Path(public_root_str)
+    src = None
+    for path, meta, nid in _iter_pages(priv):
+        if nid == node_id:
+            src = (path, meta)
+            break
+    if src is None:
+        print(f"error: no page with node_id {node_id!r} in {priv}", file=sys.stderr)
+        sys.exit(1)
+    spath, smeta = src
+    styp = smeta.get("type")
+    if styp not in _GENERAL_LAYER or not pub.exists():
+        print("[]")
+        return
+    sslug = _page_slug(spath, smeta)
+    stoks = {t for t in sslug.split("-") if t}
+    out: list[dict] = []
+    for path, meta, nid in _iter_pages(pub):
+        if meta.get("type") != styp:
+            continue
+        cslug = _page_slug(path, meta)
+        ctoks = {t for t in cslug.split("-") if t}
+        shared = stoks & ctoks
+        union = stoks | ctoks
+        jac = (len(shared) / len(union)) if union else 0.0
+        if cslug == sslug or len(shared) >= 2 or jac >= threshold:
+            out.append({
+                "node_id": nid,
+                "title": _page_title(path, meta),
+                "path": str(path),
+                "slug": cslug,
+                "status": meta.get("status", ""),
+                "jaccard": round(jac, 3),
+                "excerpt": _page_excerpt(path, meta),
+            })
+    out.sort(key=lambda c: c["jaccard"], reverse=True)
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+def remove_entry(root_str: str, node_id: str, reason: str = "", superseded_by: str = "") -> None:
+    """Hard-delete a knowledge entry: remove its file, prune its edges, log it.
+
+    Used when private→public dedup decides the public KB is authoritative
+    (duplicate / semantic conflict → public wins). The caller re-runs
+    rebuild-index / rebuild-query-pack afterwards.
+    """
+    root = Path(root_str)
+    target = None
+    for path, meta, nid in _iter_pages(root):
+        if nid == node_id:
+            target = path
+            break
+    if target is None:
+        print(f"error: no page with node_id {node_id!r}", file=sys.stderr)
+        sys.exit(1)
+    target.unlink()
+    edges = _read_edges(root)
+    kept = [e for e in edges if e.get("from") != node_id and e.get("to") != node_id]
+    pruned = len(edges) - len(kept)
+    edges_path = root / "graph" / "edges.jsonl"
+    if edges_path.exists():
+        edges_path.write_text(
+            "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in kept),
+            encoding="utf-8",
+        )
+    msg = f"remove: {node_id} (file deleted, {pruned} edge(s) pruned)"
+    if reason:
+        msg += f" reason={reason}"
+    if superseded_by:
+        msg += f" superseded-by={superseded_by}"
+    append_log(root_str, msg)
+    print(f"removed {node_id}: file deleted, {pruned} edge(s) pruned")
+
+
 # ── CLI ───────────────────────────────────────────────────────────
 
 
@@ -538,6 +706,9 @@ def main() -> int:
     s = sub.add_parser("rebuild-index"); s.add_argument("root")
     s = sub.add_parser("find-existing"); s.add_argument("root"); s.add_argument("--type", required=True); s.add_argument("--slug", required=True)
     s = sub.add_parser("promote"); s.add_argument("root"); s.add_argument("node_id"); s.add_argument("--reviewer", required=True); s.add_argument("--verdict-id", required=True)
+    s = sub.add_parser("demote"); s.add_argument("root"); s.add_argument("node_id"); s.add_argument("--reason", default="")
+    s = sub.add_parser("find-dedup-candidates"); s.add_argument("node_id"); s.add_argument("--root", required=True); s.add_argument("--public-root", required=True); s.add_argument("--threshold", type=float, default=DEDUP_JACCARD)
+    s = sub.add_parser("remove"); s.add_argument("root"); s.add_argument("node_id"); s.add_argument("--reason", default=""); s.add_argument("--superseded-by", dest="superseded_by", default="")
     s = sub.add_parser("stats"); s.add_argument("root")
     s = sub.add_parser("log"); s.add_argument("root"); s.add_argument("message")
 
@@ -558,6 +729,12 @@ def main() -> int:
         find_existing(a.root, a.type, a.slug)
     elif a.cmd == "promote":
         promote(a.root, a.node_id, a.reviewer, a.verdict_id)
+    elif a.cmd == "demote":
+        demote(a.root, a.node_id, a.reason)
+    elif a.cmd == "find-dedup-candidates":
+        find_dedup_candidates(a.node_id, a.root, a.public_root, a.threshold)
+    elif a.cmd == "remove":
+        remove_entry(a.root, a.node_id, a.reason, a.superseded_by)
     elif a.cmd == "stats":
         get_stats(a.root)
     elif a.cmd == "log":
