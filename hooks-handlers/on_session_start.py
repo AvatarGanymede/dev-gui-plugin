@@ -55,11 +55,41 @@ def _read_pack(pack: Path | None) -> str:
     return ""
 
 
+def _export_session_id(event: dict) -> None:
+    """Persist the current session_id so subsequent Bash commands (e.g. the
+    ``/dev-gui-plugin:run`` command) can stamp it onto the autorun sentinel.
+
+    The Stop hook is keyed only by ``CLAUDE_PROJECT_DIR``; without an owning
+    session_id on the sentinel it would drive *any* session that stops in the
+    same project, hijacking unrelated sessions. The session_id is available to
+    the SessionStart hook on stdin but NOT as an env var to slash-command Bash;
+    SessionStart hooks may bridge that gap via ``CLAUDE_ENV_FILE``, whose
+    ``export`` lines are loaded for later Bash commands in this session.
+
+    Best-effort: any failure is swallowed (the run command tolerates an empty
+    session_id by writing an unscoped sentinel — old global behavior).
+    """
+    sid = event.get("session_id")
+    env_file = os.environ.get("CLAUDE_ENV_FILE")
+    if not sid or not env_file:
+        return
+    if any(c in sid for c in "\n\r\"'`$\\"):  # refuse to inject shell metacharacters
+        return
+    try:
+        with open(env_file, "a", encoding="utf-8") as f:
+            f.write(f'export CLAUDE_SESSION_ID="{sid}"\n')
+    except OSError:
+        pass
+
+
 def main() -> int:
     try:
-        sys.stdin.read()  # consume the event payload (unused)
+        raw = (sys.stdin.read() or "").lstrip("\ufeff").strip()
+        event = json.loads(raw) if raw else {}
     except Exception:
-        pass
+        event = {}
+
+    _export_session_id(event)
 
     try:
         # PUBLIC first (authoritative), then PRIVATE.

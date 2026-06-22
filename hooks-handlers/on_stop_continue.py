@@ -23,6 +23,13 @@ dir). On every agent stop:
 Safety:
   - Gated by the sentinel: sessions WITHOUT an active autorun are never affected,
     so single-phase manual use (e.g. just /dev-gui-plugin:gui-review) is untouched.
+  - Session-scoped: a sentinel records the ``session_id`` of the session that
+    started the autorun (stamped by the ``/dev-gui-plugin:run`` command). The Stop
+    hook only drives a sentinel whose ``session_id`` matches the CURRENT stopping
+    session, so an unrelated session that happens to stop in the same project is
+    never hijacked into the pipeline. (Legacy/unscoped sentinels with no
+    ``session_id`` — or events that carry no ``session_id`` — fall back to the old
+    project-global behavior so in-flight runs are not abandoned.)
   - A per-run nudge counter (``max_nudges``, default 30) caps runaway loops; once
     exceeded the sentinel is cleared, an alert is logged, and the stop is allowed.
   - Fails OPEN: any error → allow the stop, never wedge the session.
@@ -57,6 +64,20 @@ def _project_root(event: dict) -> Path | None:
         return None
     p = Path(root)
     return p if p.exists() else None
+
+
+def _owned_by(sentinel: dict, current_sid: str | None) -> bool:
+    """Whether this autorun sentinel belongs to the current stopping session.
+
+    Core of the cross-session fix. A sentinel that records a ``session_id`` is
+    only driven for that exact session. Missing data on EITHER side (an unscoped
+    legacy sentinel, or a Stop event without a session_id) degrades to the old
+    project-global behavior so we never strand an in-flight run.
+    """
+    owner = sentinel.get("session_id")
+    if not owner or not current_sid:
+        return True
+    return owner == current_sid
 
 
 def _next_phase(state: dict) -> str | None:
@@ -123,6 +144,14 @@ def main() -> int:
             return _allow()
 
         cands = _candidates(runs_dir)
+        if not cands:
+            return _allow()
+
+        # Only consider autoruns owned by the CURRENT session (see _owned_by):
+        # this is what stops an unrelated session from being driven into the
+        # pipeline just because it stopped in the same project.
+        current_sid = event.get("session_id")
+        cands = [c for c in cands if _owned_by(c[3], current_sid)]
         if not cands:
             return _allow()
 
