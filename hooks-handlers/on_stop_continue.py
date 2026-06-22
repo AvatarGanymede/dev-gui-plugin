@@ -23,13 +23,14 @@ dir). On every agent stop:
 Safety:
   - Gated by the sentinel: sessions WITHOUT an active autorun are never affected,
     so single-phase manual use (e.g. just /dev-gui-plugin:gui-review) is untouched.
-  - Session-scoped: a sentinel records the ``session_id`` of the session that
-    started the autorun (stamped by the ``/dev-gui-plugin:run`` command). The Stop
-    hook only drives a sentinel whose ``session_id`` matches the CURRENT stopping
-    session, so an unrelated session that happens to stop in the same project is
-    never hijacked into the pipeline. (Legacy/unscoped sentinels with no
-    ``session_id`` — or events that carry no ``session_id`` — fall back to the old
-    project-global behavior so in-flight runs are not abandoned.)
+  - Session-scoped (STRICT): a sentinel records the ``session_id`` of the session
+    that started the autorun (stamped by the ``/dev-gui-plugin:run`` command). The
+    Stop hook drives a sentinel ONLY when its ``session_id`` equals the CURRENT
+    stopping session's, so an unrelated session that happens to stop in the same
+    project is never hijacked into the pipeline. There is no project-global
+    fallback: an unscoped sentinel (no ``session_id`` — a pre-upgrade residual or a
+    session_id-capture failure) is never driven and is retired on sight; a sentinel
+    owned by a different live session is left for that session to drive.
   - A per-run nudge counter (``max_nudges``, default 30) caps runaway loops; once
     exceeded the sentinel is cleared, an alert is logged, and the stop is allowed.
   - Fails OPEN: any error → allow the stop, never wedge the session.
@@ -69,15 +70,18 @@ def _project_root(event: dict) -> Path | None:
 def _owned_by(sentinel: dict, current_sid: str | None) -> bool:
     """Whether this autorun sentinel belongs to the current stopping session.
 
-    Core of the cross-session fix. A sentinel that records a ``session_id`` is
-    only driven for that exact session. Missing data on EITHER side (an unscoped
-    legacy sentinel, or a Stop event without a session_id) degrades to the old
-    project-global behavior so we never strand an in-flight run.
+    Core of the cross-session fix, STRICT: drive only when the sentinel records a
+    ``session_id`` AND it equals the current Stop event's ``session_id``.
+
+    There is deliberately NO project-global fallback. An earlier version drove
+    sentinels that lacked a ``session_id`` "globally" so as not to strand in-flight
+    runs — but that re-opened the exact bug: a pre-upgrade (unscoped) sentinel kept
+    hijacking unrelated sessions that merely stopped in the same project. So an
+    unscoped sentinel (or a Stop event with no session_id) now means "not ours" and
+    is never driven (unscoped residuals are retired separately, see main()).
     """
     owner = sentinel.get("session_id")
-    if not owner or not current_sid:
-        return True
-    return owner == current_sid
+    return bool(owner) and bool(current_sid) and owner == current_sid
 
 
 def _next_phase(state: dict) -> str | None:
@@ -147,11 +151,28 @@ def main() -> int:
         if not cands:
             return _allow()
 
-        # Only consider autoruns owned by the CURRENT session (see _owned_by):
-        # this is what stops an unrelated session from being driven into the
-        # pipeline just because it stopped in the same project.
+        # Only drive autoruns owned by the CURRENT session (see _owned_by): this is
+        # what stops an unrelated session from being pulled into the pipeline just
+        # because it stopped in the same project. Sentinels owned by *another* live
+        # session are left untouched (that session will drive its own run). Unscoped
+        # sentinels (no session_id) can never be safely attributed — they are
+        # pre-upgrade residuals (or a session_id-capture failure) and are exactly
+        # what used to hijack bystanders, so we RETIRE them here (self-heal) rather
+        # than drive them.
         current_sid = event.get("session_id")
-        cands = [c for c in cands if _owned_by(c[3], current_sid)]
+        owned = []
+        for cand in cands:
+            sentinel = cand[3]
+            if _owned_by(sentinel, current_sid):
+                owned.append(cand)
+            elif not sentinel.get("session_id"):
+                run_dir = cand[1]
+                _clear_sentinel(run_dir)
+                _log_alert(run_dir,
+                           "retired unscoped .autorun.json (no session_id — pre-upgrade "
+                           "residual or session_id capture failed); not driving. "
+                           "Re-run /dev-gui-plugin:run to resume autorun for this run.")
+        cands = owned
         if not cands:
             return _allow()
 

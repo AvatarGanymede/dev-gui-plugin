@@ -79,10 +79,11 @@ claude --plugin-dir /path/to/dev-gui-plugin
    `run_state.json`，若本次 run 带哨兵且还有阶段未推进（状态非 `done/accepted/skipped`），就
    `decision:block` 把 agent 拉回，指明**下一阶段**并要求继续；直到 gui-learn 完成才放行并清哨兵。
    - 仅对带哨兵的 run 生效 → **单独跑某个 skill 的手动用法完全不受影响**。
-   - **会话隔离**：哨兵记录开启 autorun 的 `session_id`（由 `/run` 命令写入，`session_id` 经
-     SessionStart hook 通过 `CLAUDE_ENV_FILE` 注入），调度器只驱动**归属当前停止会话**的哨兵 →
-     同一项目下其它无关会话停止时**不会被误拉进流水线**（无 `session_id` 的旧哨兵/旧版本则退化为
-     项目全局驱动，不中断在跑的 run）。
+   - **会话隔离（严格）**：哨兵记录开启 autorun 的 `session_id`（由 `/run` 命令写入，`session_id`
+     经 SessionStart hook 通过 `CLAUDE_ENV_FILE` 注入），调度器**只**驱动 `session_id` 与当前停止会话
+     **完全匹配**的哨兵 → 同一项目下其它无关会话停止时**绝不会被误拉进流水线**。无 `session_id` 的
+     哨兵（插件升级前的残留、或 `session_id` 捕获失败）一律**不驱动并就地退役（删除）**，避免老数据继续
+     劫持旁观会话；归属其它存活会话的哨兵则原样保留，交由其自己的会话驱动。
    - 带 `nudges/max_nudges`（默认 30）计数上限，超限自动脱离并写 `.autorun.log`，避免无进展死循环。
    - 它是**驱动器**（保证向前串联）；跨 run 的「有没有卡住」健康巡检仍用 `tools/watchdog.py`。
 
