@@ -10,7 +10,7 @@
 
 | 库 | 路径 | 性质 | 由谁写 | 创建 |
 |----|------|------|--------|------|
-| **私有库** | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | `gui-learn`（含 pipeline 第 8 阶段） | gui-plan 首次运行自动 init |
+| **私有库** | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | `gui-learn`（含 pipeline 第 7 阶段） | gui-plan 首次运行自动 init |
 | **公共库** | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | 项目共享、团队维护、走 **p4** | `gui-learn-public`（仅手动调用） | **仅** gui-learn-public 显式写入时 init |
 
 - **两库都被读**：SessionStart hook 注入、gui-plan、gui-draft 同时加载两库 query_pack。

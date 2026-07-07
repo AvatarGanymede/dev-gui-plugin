@@ -1,7 +1,7 @@
 # 接受门（acceptance-gate）
 
 > 从 ARIS `acceptance-gate.md` 迁移，适配 GUI 场景。本插件「自报完成」与「被接受」分离、
-> 「拒/纳不对称」的总纲。被 `gui-verify`（6 态裁决）、`gui-improve`（Bias Guard）、
+> 「拒/纳不对称」的总纲。被 `gui-review`（并行两车道 + 6 态裁决）、`gui-improve`（Bias Guard）、
 > `gui-learn`（通用层晋升）、`gui_run_state.py`（done vs accepted）共同引用。
 
 ## 1. 核心原则：一个 loop 可以 DRIVE，不能 ACQUIT
@@ -53,9 +53,9 @@
 |------|-----------|
 | done（自报执行完成） | `gui_run_state.py set ... done` |
 | accepted（独立判定通过） | `gui_run_state.py accept ...`（reviewer + verdict） |
-| Type-A self-check | `gui-verify` Type-A 门 |
-| Type-B judge | `gui-verify` Type-B → `gui-reviewer` subagent |
-| Bias Guard | `gui-review` / `gui-improve`：全新 subagent，不传实现细节 |
+| Type-A self-check | `gui-review` 的 Type-A 车道（orchestrator 自跑机械门） |
+| Type-B judge | `gui-review` 的 Type-B 车道 → `gui-reviewer` subagent（与 Type-A 并行） |
+| Bias Guard | `gui-review`(Type-B) / `gui-improve`：全新 subagent，不传实现细节 |
 | 6 态裁决 | `GUI_VERDICT.json`（见 `verification-gates.md`） |
 | 知识「拒」 | `capture_filter.py`（PreToolUse hook + gui-learn 第 0 步） |
 | 知识「纳」 | `gui_knowledge.py promote`（reviewer 背书） |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop hook — autorun driver that keeps the 8-phase pipeline chained.
+"""Stop hook — autorun driver that keeps the 7-phase pipeline chained.
 
 The pipeline's phase-to-phase chaining is otherwise "soft": each SKILL.md ends
 with a natural-language "→ next phase" hint and relies on the agent to follow it.
@@ -130,6 +130,46 @@ def _log_alert(run_dir: Path, msg: str) -> None:
         pass
 
 
+def _reason_for(nxt: str, run_id: str, nudges: int, max_nudges: int) -> str:
+    """Driver nudge text for the target phase.
+
+    Most phases share one generic nudge. `gui-prefab` is special: it is the head of
+    the `gui-prefab ∥ gui-config` PARALLEL group — reaching it means the orchestrator
+    should drive BOTH in one turn (prefab on the main agent, config in a background
+    subagent when the requirement touches config), settling both states before it
+    yields. `gui-config` alone is only reached on a resume boundary (prefab already
+    done, config still pending) — there we just drive config normally.
+    """
+    head = (
+        f"[dev-gui:run 自动驱动 {nudges}/{max_nudges}] pipeline 尚未跑完，"
+        f"run='{run_id}' 的下一阶段是 **{nxt}**。"
+    )
+    tail = (
+        "\n铁律：阶段间不停顿；缺必要信息就占位实现 + 留 TODO 注释并记入 HUMAN_REVIEW.md；"
+        "本次不适用的阶段用 `gui_run_state.py set <root> <run_id> <phase> skipped` 显式跳过；"
+        "完成该阶段后用 `set ... <phase> done` 记账，再继续后续阶段，直到 gui-learn 完成。"
+    )
+    if nxt == "gui-prefab":
+        return (
+            head
+            + "这是 **gui-prefab ∥ gui-config 并行组**，请在**同一回合内**同时驱动两阶段并把两者状态都落定：\n"
+            "① **主 agent 跑 gui-prefab**（加载 ${CLAUDE_PLUGIN_ROOT}/skills/gui-prefab/SKILL.md）："
+            "**先触发 Unity C# 编译，编译通过后再挂脚本 + 绑定 [SerializeField]**（缺编译/prefab 能力则该门 BLOCKED 记 HUMAN_REVIEW.md，不阻塞）。\n"
+            "② **并行**：读 GUI_PLAN.md，若本需求涉及配置数据，用 Agent 工具 `run_in_background: true` "
+            "**spawn 一个 gui-config subagent**（加载 skills/gui-config/SKILL.md，只做配表编辑并结构化返回结果，subagent 不写 run_state）；"
+            "不涉及配置则不 spawn，直接 `set <panelId> gui-config skipped`。\n"
+            "③ 用 `TaskOutput` 等 config subagent 结束，由**主 agent 统一记账**："
+            "`set <panelId> gui-config done`（或 skipped）+ `set <panelId> gui-prefab done`。\n"
+            "④ **prefab 与 config 两阶段都落定后**（本回合结束前）才继续 gui-review。**不要停下来询问用户**。"
+            + tail
+        )
+    return (
+        head
+        + f"请立即加载并执行 ${{CLAUDE_PLUGIN_ROOT}}/skills/{nxt}/SKILL.md，**不要停下来询问用户**。"
+        + tail
+    )
+
+
 def main() -> int:
     # The event payload is optional — we prefer CLAUDE_PROJECT_DIR. Parse best-effort
     # (tolerate a BOM / stray whitespace); fall back to an empty event, don't bail.
@@ -206,14 +246,7 @@ def main() -> int:
         except OSError:
             pass
 
-        reason = (
-            f"[dev-gui:run 自动驱动 {nudges}/{max_nudges}] pipeline 尚未跑完，"
-            f"run='{run_id}' 的下一阶段是 **{nxt}**。请立即加载并执行 "
-            f"${{CLAUDE_PLUGIN_ROOT}}/skills/{nxt}/SKILL.md，**不要停下来询问用户**。\n"
-            "铁律：阶段间不停顿；缺必要信息就占位实现 + 留 TODO 注释并记入 HUMAN_REVIEW.md；"
-            "本次不适用的阶段用 `gui_run_state.py set <root> <run_id> <phase> skipped` 显式跳过；"
-            "完成该阶段后用 `set ... <phase> done` 记账，再继续后续阶段，直到 gui-learn 完成。"
-        )
+        reason = _reason_for(nxt, run_id, nudges, max_nudges)
         out = {"decision": "block", "reason": reason}
         sys.stdout.write(json.dumps(out, ensure_ascii=False))
         return 0

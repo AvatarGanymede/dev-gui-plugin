@@ -1,6 +1,6 @@
 # dev-gui-plugin 设计与实现计划
 
-> Atom Game GUI 开发全流程 Claude Code Plugin，含 8 阶段 pipeline、长期记忆知识库、subagent 审查和验证门体系。
+> Atom Game GUI 开发全流程 Claude Code Plugin，含 7 阶段 pipeline、长期记忆知识库、subagent 审查和验证门体系。
 
 ## 参考来源
 
@@ -22,15 +22,14 @@ dev-gui-plugin/
 ├── .claude-plugin/
 │   └── plugin.json                    # 插件清单（name/version/description；skills·agents·hooks 走默认目录自动发现）
 │
-├── skills/                            # 8 个命名空间 skill (/dev-gui-plugin:gui-xxx)
-│   ├── gui-plan/SKILL.md              # Phase 1: 信息收集 + 知识库查询
+├── skills/                            # 7 个命名空间 skill (/dev-gui-plugin:gui-xxx)
+│   ├── gui-plan/SKILL.md              # Phase 1: plan mode 确认需求 + 人类审批
 │   ├── gui-draft/SKILL.md             # Phase 2: MVVM 代码生成（自包含）
 │   ├── gui-prefab/SKILL.md            # Phase 3: Prefab 编辑（自包含，不依赖 edit-prefab）
 │   ├── gui-config/SKILL.md            # Phase 4: 配置表编辑（自包含，不依赖 edit-excel）
-│   ├── gui-review/SKILL.md            # Phase 5: Subagent 审查
-│   ├── gui-verify/SKILL.md            # Phase 6: Type-A/B 验证门
-│   ├── gui-improve/SKILL.md           # Phase 7: 迭代修复循环
-│   └── gui-learn/SKILL.md             # Phase 8: 知识沉淀（回写 gui-knowledge）
+│   ├── gui-review/SKILL.md            # Phase 5: 唯一验证门（Type-B subagent ∥ Type-A 机械门）
+│   ├── gui-improve/SKILL.md           # Phase 6: 迭代修复循环
+│   └── gui-learn/SKILL.md             # Phase 7: 知识沉淀（回写 gui-knowledge）
 │
 ├── agents/
 │   └── gui-reviewer.md                # 审查 subagent 定义（独立上下文，Bias Guard）
@@ -93,11 +92,11 @@ dev-gui-plugin/
 
 ### 单次运行产物位置
 
-per-run 产物（`GUI_PRD.md` / `GUI_REVIEW.md` / `GUI_VERDICT.json` / `GUI_IMPROVEMENT_LOG.md` / `HUMAN_REVIEW.md`）
+per-run 产物（`GUI_PLAN.md` / `GUI_REVIEW.md` / `GUI_VERDICT.json` / `GUI_IMPROVEMENT_LOG.md` / `HUMAN_REVIEW.md`）
 与 `gui_run_state.py` 的状态文件，写 **项目内 run 目录**：
 ```
 ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
-  ├── GUI_PRD.md  GUI_REVIEW.md  GUI_VERDICT.json  GUI_IMPROVEMENT_LOG.md  HUMAN_REVIEW.md
+  ├── GUI_PLAN.md  GUI_REVIEW.md  GUI_VERDICT.json  GUI_IMPROVEMENT_LOG.md  HUMAN_REVIEW.md
   └── run_state.json          # gui_run_state.py：phase / done / accepted / resume_point
 ```
 - 与代码改动并排，便于开发者直接 review，支持跨会话 resume。
@@ -113,7 +112,7 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "dev-gui-plugin",
   "version": "0.1.0",
-  "description": "Atom Game GUI 开发全流程 pipeline — 从需求到交付的 8 阶段自动化工作流，含长期记忆知识库和 subagent 审查体系",
+  "description": "Atom Game GUI 开发全流程 pipeline — 从需求到交付的 7 阶段自动化工作流，含长期记忆知识库和 subagent 审查体系",
   "author": {
     "name": "北林"
   },
@@ -126,11 +125,11 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 > 官方规则：显式声明 `agents`/`commands` 是「**替换**」默认目录而非追加，留空更稳妥；
 > `version` 设定后用户仅在 bump 时收到更新。
 > （注意与已生成骨架的 `plugin.json` 对齐：骨架里的 `"skills": ["./"]` 会把插件根 SKILL.md
-> 当成一个 skill，与本插件「8 个 skill 在 skills/ 下」的布局冲突，需删除该字段。）
+> 当成一个 skill，与本插件「7 个 skill 在 skills/ 下」的布局冲突，需删除该字段。）
 
 ---
 
-## 三、8 阶段 Pipeline 详解
+## 三、7 阶段 Pipeline 详解
 
 ### 总览
 
@@ -139,75 +138,72 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
   │
   ▼
 ┌──────────────────────────────────────────────────────────┐
-│ Phase 1: gui-plan    信息收集 + 知识库查询                 │
+│ Phase 1: gui-plan    plan mode 确认需求 + 人类审批         │
 │ 控制：需求理解漂移                                         │
 │ 输入：用户原始需求                                         │
-│ 输出：GUI_PRD.md（结构化需求规格）                         │
-│ Gate：panelId + 功能描述 必须齐全                           │
+│ 输出：GUI_PLAN.md（审批过的需求契约）                       │
+│ Gate：用户 ExitPlanMode 审批通过                            │
 └────────────────────────┬─────────────────────────────────┘
                          ▼
 ┌──────────────────────────────────────────────────────────┐
 │ Phase 2: gui-draft   MVVM 代码生成                        │
 │ 控制：代码实现漂移（vs 需求规格）                            │
-│ 输入：GUI_PRD.md + gui-knowledge/query_pack.md           │
+│ 输入：GUI_PLAN.md + gui-knowledge/query_pack.md           │
 │ 输出：Panel.lua + View.cs + ViewModel（如有新增）           │
 │ Gate：MVVM 一致性（Panel 写 ↔ View 读 匹配）               │
 └────────────────────────┬─────────────────────────────────┘
                          ▼
-┌──────────────────────────────────────────────────────────┐
-│ Phase 3: gui-prefab  Prefab 编辑                          │
-│ 控制：Prefab 绑定漂移                                      │
-│ 输入：draft 输出的 View.cs + ui_data.lua 的 prefab 路径    │
-│ 输出：修改后的 .prefab                                     │
-│ Gate：[SerializeField] vs Prefab 节点绑定完整性             │
-└────────────────────────┬─────────────────────────────────┘
+      ┌──────────────── Phase 3 ∥ Phase 4 并行组 ───────────────┐
+      │  主 agent                        subagent（按需）        │
+┌─────┴────────────────────────────┐  ┌────────────────────────┴──────┐
+│ Phase 3: gui-prefab  Prefab 编辑  │  │ Phase 4: gui-config 配置表编辑 │
+│ （主 agent）                       │  │ （subagent，涉及配置才 spawn） │
+│ 控制：Prefab 绑定漂移              │  │ 控制：配置数据漂移             │
+│ 前置：**先触发 C# 编译再改 prefab**│  │ 输入：功能涉及的配置数据需求    │
+│ 输入：View.cs + prefab 路径        │  │ 输出：design/tables/*.xlsx     │
+│ 输出：修改后的 .prefab             │  │       + 镜像 *_data.lua        │
+│ Gate：编译门 + [SerializeField]绑定│  │ Gate：Excel ↔ *_data.lua 同步  │
+└─────┬────────────────────────────┘  └────────────────────────┬──────┘
+      │        两阶段都落定后 orchestrator 汇合（TaskOutput）    │
+      └────────────────────────┬────────────────────────────────┘
                          ▼
 ┌──────────────────────────────────────────────────────────┐
-│ Phase 4: gui-config  配置表编辑（按需，可跳过）              │
-│ 控制：配置数据漂移（Excel 源表 vs lua data 不同步）          │
-│ 输入：功能涉及的配置数据需求                                 │
-│ 输出：修改后的 design/tables/*.xlsx                        │
-│ Gate：Excel 源表 ↔ *_data.lua 同步（模拟导表）             │
-└────────────────────────┬─────────────────────────────────┘
-                         ▼
-┌──────────────────────────────────────────────────────────┐
-│ Phase 5: gui-review  Subagent 审查                        │
-│ 控制：逻辑质量漂移                                          │
+│ Phase 5: gui-review  唯一验证门（并行两车道）               │
+│ 控制：逻辑质量漂移 + 机器可验证正确性                        │
 │ 输入：Phase 2-4 的所有产出文件                              │
-│ 方式：spawn 独立 subagent（全新上下文，Bias Guard）          │
-│ 输出：GUI_REVIEW.md                                       │
-│       - 问题列表（CRITICAL > MAJOR > MINOR）               │
-│       - 每问题含 file:line 位置 + 修复建议                   │
-│       - Overall Score (1-10)                              │
-│ Gate：CRITICAL 问题数 == 0                                 │
+│                                                          │
+│ Type-B 车道（独立 subagent，run_in_background，Bias Guard）: │
+│  • 交互逻辑正确性 / 性能反模式 / MVVM 一致性 / 生命周期        │
+│  • 输出 GUI_REVIEW.md（CRITICAL > MAJOR > MINOR + Score）  │
+│ Type-A 车道（orchestrator 自跑，等 subagent 期间并行）:      │
+│  • C# 编译 / Lua 语法 / Prefab 节点存在 / 绑定数量匹配        │
+│  • 生成文件优先工具导出 / 配置 Excel↔data 同步               │
+│                                                          │
+│ 汇合 → 合并 CRITICAL 集合（编译/语法失败 ∪ Type-B CRITICAL）│
+│ 输出：GUI_VERDICT.json + HUMAN_REVIEW.md(清单)            │
+│ Gate：合并 CRITICAL 数 == 0                                │
 └────────────────────────┬─────────────────────────────────┘
                          ▼
-              ┌────── 有 CRITICAL? ──────┐
-              │                          │
-             否                          是
-              │                          │
-              ▼                          ▼
-┌──────────────────────────┐  ┌──────────────────────────────┐
-│ Phase 6: gui-verify      │  │ Phase 7: gui-improve          │
-│ 验证门                    │  │ 迭代修复循环（最多 2 轮）       │
-│                          │  │                              │
-│ Type-A (self-check):     │  │ Round N:                     │
-│  • 编译通过               │  │  1. 读 GUI_REVIEW.md          │
-│  • Prefab 节点存在         │  │  2. 按优先级修复 CRITICAL     │
-│  • 绑定数量匹配            │  │  3. 重新审查（新 subagent）     │
-│                          │  │  4. 输出 GUI_IMPROVEMENT_LOG  │
-│ Type-B (subagent judge): │  │                              │
-│  • 交互逻辑正确性           │  │ 每轮 Bias Guard：             │
-│  • 性能反模式检测           │  │  subagent 不知道上一轮改了什么   │
-│                          │  │                              │
-│ 输出：GUI_VERDICT.json    │  │ 2 轮后仍有 CRITICAL →         │
-│ + HUMAN_REVIEW.md(清单)  │  │ 记入 HUMAN_REVIEW（不暂停）    │
-└──────────┬───────────────┘  └──────────────┬───────────────┘
-           │                                 │
-           └───────────┬─────────────────────┘
-                       ▼
+              ┌── 有合并 CRITICAL? ──┐
+              │                      │
+             否                      是
+              │                      │
+              │                      ▼
+              │      ┌──────────────────────────────┐
+              │      │ Phase 6: gui-improve          │
+              │      │ 迭代修复循环（最多 2 轮）       │
+              │      │  1. 读合并 CRITICAL 集合        │
+              │      │  2. 按优先级修复（含编译/语法）  │
+              │      │  3. 重跑 gui-review 两车道       │
+              │      │  4. 输出 GUI_IMPROVEMENT_LOG  │
+              │      │ 每轮 Bias Guard；2 轮后仍有     │
+              │      │ CRITICAL → 记 HUMAN_REVIEW    │
+              │      └──────────────┬───────────────┘
+              │                     │
+              └──────────┬──────────┘
+                         ▼
 ┌──────────────────────────────────────────────────────────┐
-│ Phase 8: gui-learn   知识沉淀（每次完成后自动触发）          │
+│ Phase 7: gui-learn   知识沉淀（每次完成后自动触发）          │
 │                                                          │
 │ 实例层: bug+根因+修复 → bugs/ ; 修复尝试 → fixes/         │
 │ 通用层(每次必做,泛化后跨 panel 复用):                       │
@@ -220,37 +216,36 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 ---
 
-### Phase 1: gui-plan — 信息收集 + 知识库查询
+### Phase 1: gui-plan — plan mode 确认需求 + 人类审批
 
-**职责**：收集 panelId、功能描述、Prefab 路径三项输入，缺失则用 AskQuestion 追问；同时加载 gui-knowledge/query_pack.md 提供历史上下文。
+**职责**：进入 plan mode，只读定位资源、向用户澄清需求、写计划并**等人类审批**；审批通过后产出
+**高度精炼**的需求契约 `GUI_PLAN.md`。这是整条 pipeline 唯一的交互 + 人类审批关卡；本阶段**零写操作**，
+所有写操作（run state / GUI_PLAN.md / 哨兵）都发生在审批之后。
 
 **输入**：用户原始需求（可能不完整）
 
 **处理流程**：
-1. 检查三项必须/可选输入是否齐全
-2. 缺失必须项 → AskQuestion 一次性收集所有缺失项
-3. panelId 齐全后 → 读 `code/LuaScripts/client/data/ui_data.lua` 定位 Prefab 路径、Panel 脚本路径、ViewModel 类型
-4. 加载 `${CLAUDE_PLUGIN_DATA}/gui-knowledge/query_pack.md` → 注入历史坑点/组件技巧
-   （首次运行：若该目录不存在，先把插件内 `gui-knowledge-seed/` 复制过去初始化；
-   SessionStart hook 已尝试预注入，此处兜底确认）
-5. 输出 `GUI_PRD.md`
+1. 进入 plan mode（`EnterPlanMode`；已在则跳过）—— 以下均为只读
+2. 读 `code/LuaScripts/client/data/ui_data.lua` 定位 Prefab 路径、Panel 脚本路径、ViewModel 类型
+3. 用 SessionStart hook 已注入上下文的 query_pack 历史坑点/组件技巧（**无需现场读文件或 init**）
+4. 需求缺失/歧义 → `AskUserQuestion` 一次性向用户澄清（此阶段无 autorun 哨兵，可自由停顿）
+5. 写计划（偏需求侧：要做什么 + 验收标准）→ `ExitPlanMode` 等人类审批；被拒则改后再审
+6. 审批通过后（已退出 plan mode）→ 初始化 run state + 输出精炼 `GUI_PLAN.md`
 
-**输出格式 `GUI_PRD.md`**：
+**输出格式 `GUI_PLAN.md`（高度精炼，供 gui-review 独立审查者当契约）**：
 ```markdown
-# GUI PRD: <panelId>
+# GUI PLAN: <panelId>   （用户已审批）
 
-## 基本信息
-- panelId: xxx
-- Prefab 路径: Assets/...
-- Panel 脚本路径: code/LuaScripts/client/...
-- ViewModel 类型: XXXViewModel
+- panelId / Prefab 路径 / Panel 脚本路径 / ViewModel 类型
 
-## 功能描述
-[结构化需求描述]
+## 需求
+- [几行 bullet：这个界面要做什么]
 
-## 相关历史经验（来自 gui-knowledge）
-- [涉及的组件已知坑点]
-- [类似界面曾出现的 bug]
+## 验收标准
+- [几行 bullet：review 据此判断是否达成]
+
+## 相关历史坑点（可选，来自 query_pack）
+- [涉及组件的已知坑点 / 类似界面曾出现的 bug]
 ```
 
 **Gate**：panelId + 功能描述 必须齐全 → 进入 Phase 2
@@ -263,7 +258,8 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 **核心规则（内嵌）**：
 - Panel (Lua) 写 ViewModel，View (C#) 只读
-- 需要新增/改 ViewModel 属性 → 走 3-Phase：ViewModelDes → 生成 → View/Panel（生成产物就绪前禁写 Phase 3）
+- ViewModel 设计由 gui-plan 定死，gui-draft 照抄写 ViewModelDes、不自行设计
+- 需要新增/改 ViewModel 属性 → 走 §3 的 5 步、含两道 C# 编译硬门：写 ViewModelDes → 编译① → 工具导出 → 编译② → 写 View/Panel（编译②前禁写 View/Panel）
 - 生成文件 `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`：
   **优先工具导出，不优先手改**；仅当工具导出失败/不可用时才允许降级手改补齐（加 `TODO(模拟导出)` + 记 `HUMAN_REVIEW.md`）
 - Panel 文件名：`<PanelName>Panel.lua`，继承 `UIBasePanel`
@@ -282,9 +278,15 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 ---
 
-### Phase 3: gui-prefab — Prefab 编辑
+### Phase 3: gui-prefab — Prefab 编辑（主 agent，与 Phase 4 并行）
 
-**职责**：自包含的 Prefab 编辑指引，不依赖外部 edit-prefab skill。
+**职责**：自包含的 Prefab 编辑指引，不依赖外部 edit-prefab skill。**跑在主 agent**，
+与 gui-config（Phase 4，涉及配置时 spawn 到 subagent）**并行**；两阶段都落定后才进 gui-review。
+
+**前置 C# 编译（硬门，改 prefab 之前必做）**：先触发 Unity C# 编译，让 gui-draft 产出的 `View.cs`
+（及本次新增/改动的 ViewModel）**进程序集**——MonoScript 生成稳定 GUID 后才能挂脚本、`[SerializeField]`
+才在 Inspector 可见可绑。编译通过后才进入下面的编辑；缺编译能力 → 该门 `BLOCKED` 记入 `HUMAN_REVIEW.md`，不阻塞
+（措辞同 Phase 2 的两道编译门）。
 
 **编辑内容**：
 - 把 View.cs 脚本挂到 Prefab 根节点
@@ -295,13 +297,15 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 **工具使用**：不在插件内硬绑定 MCP。运行时若已加载 `unity-prefab` 等 Prefab 能力则选用；未加载则交人工编辑。
 
-**Gate**：View.cs 中每个 `[SerializeField]` 在 Prefab 中都有对应的绑定节点。
+**Gate**：① 改 prefab 前 C# 已编译通过（缺能力 → BLOCKED）；② View.cs 中每个 `[SerializeField]` 在 Prefab 中都有对应的绑定节点。
 
 ---
 
-### Phase 4: gui-config — 配置表编辑
+### Phase 4: gui-config — 配置表编辑（subagent，与 Phase 3 并行）
 
-**职责**：自包含的配置表编辑指引，不依赖外部 edit-excel skill。
+**职责**：自包含的配置表编辑指引，不依赖外部 edit-excel skill。**由 orchestrator 在涉及配置时 spawn 到 subagent**，
+与主 agent 的 gui-prefab（Phase 3）**并行**；subagent 只做配表编辑并把结果（`edited`/`skipped`/`blocked` + 改动文件）
+**结构化返回 orchestrator**，**run_state 由 orchestrator（主 agent）统一记账**（subagent 不自行写状态，避免缺 session env）。
 
 **规则（优先工具导表，导出失败才手改镜像；零人工中断）**：
 - 改 `design/tables/` 下的 **Excel 源表**（真正的真相源）。
@@ -318,22 +322,24 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 **Gate**：Excel 源表与对应 `*_data.lua` 改动**一致**（同字段、同值），运行期可读到新配置。
 
 > 正式导表仍需人工：手写的 `*_data.lua` 是**模拟产物**，正式 GDE 导表会覆盖它。
-> 故「确认 Excel 配置正确并正式导表」列入**最终人工检查清单 `HUMAN_REVIEW.md`**（见 Phase 6 末），
+> 故「确认 Excel 配置正确并正式导表」列入**最终人工检查清单 `HUMAN_REVIEW.md`**（见 Phase 5 末），
 > 但**绝不在管线中途停顿**——agent 先把能做的全做完，需人确认的统一收口到最后。
 
 ---
 
-### Phase 5: gui-review — Subagent 审查
+### Phase 5: gui-review — 唯一验证门（并行两车道）
 
-**职责**：spawn 独立 subagent 对产出代码进行审查。Subagent 获得全新上下文，不知道实现过程。
+**职责**：一个阶段、两条**并行**车道汇合成合并 CRITICAL 门，输出 6 态裁决。原独立的 gui-verify
+（Type-A/B 分两阶段跑两遍 reviewer）已并入本阶段——Type-B 交独立 subagent、Type-A 由 orchestrator
+在等 subagent 期间就地跑，两者只读不写、无竞态。
 
-**Bias Guard 规则**（从 ARIS 迁移）：
-- 每次审查用 **全新 subagent**（不传之前的 thread/context）
+**Type-B 车道 — Bias Guard 规则**（从 ARIS 迁移）：
+- 用 **全新 subagent**（`run_in_background: true`，不传之前的 thread/context）
 - 审查 prompt 中**不包含**"我们改了什么"、"上一轮提到"等实现细节
-- 只传递：当前代码文件 + GUI_PRD.md + 相关契约文档
-- 审查者只能从代码本身判断质量
+- 只传递：当前代码文件 + GUI_PLAN.md + 相关契约文档
+- 审查者只能从代码本身判断质量（**只做品味维度**，机械核实归 Type-A）
 
-**审查维度**：
+**Type-B 审查维度（品味）**：
 
 | 维度 | 检查内容 |
 |------|---------|
@@ -342,37 +348,33 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 | 空安全 | [SerializeField] 是否判空、回调是否判空 |
 | 性能反模式 | Update 中 GetComponent、字符串拼接、重复查找 |
 | 代码规范 | 命名是否符合项目惯例、文件组织 |
-| Prefab 绑定 | 每个 SerializeField 是否有对应 Prefab 节点 |
-| 配置完整性 | 配置表变更是否完整、是否改对表 |
 
 **审查 subagent 定义** (`agents/gui-reviewer.md`)：
 ```markdown
 ---
 name: gui-reviewer
-description: Atom Game GUI 代码审查 agent，独立上下文审查 MVVM 代码、Prefab 绑定、性能反模式
+description: Atom Game GUI 代码审查 agent，独立上下文审查 MVVM 代码、生命周期、性能反模式等品味维度
 tools: Read, Grep, Glob, LSP
 ---
 
 # GUI Code Reviewer
 
-你是 Atom Game 项目的 GUI 代码审查者。你获得的是当前代码的**最终状态**，
-不知道实现过程。只从代码本身判断质量。
+你是 Atom Game 项目的 GUI 代码审查者（gui-review 的 Type-B 车道）。你获得的是当前代码的
+**最终状态**，不知道实现过程。只从代码本身做品味判断。
 
-## 运行时能力自适应（不硬绑定 MCP/skill）
-- 「Prefab 绑定」「配置完整性」两维度需读取 prefab / Excel 源表。
-- **运行时已加载** unity-prefab / excel-config 等 MCP → 调用核实。
-- **未加载** → 该维度判为 `NOT_APPLICABLE`（缺能力，非缺陷），**禁止**仅凭推测报 CRITICAL。
+## 职责边界（只做品味判断）
+- 「Prefab 绑定数量」「配置同步」「编译/语法」等机械可验证项归 orchestrator 的 Type-A 车道，
+  **不在本 agent 职责内**，不要因缺 prefab/Excel 上下文而报这些维度的 CRITICAL。
 
 ## 校验基准以运行期真实代码为准
 - 本插件模板/契约是「示意」，可能与项目最新基类不一致。
-- 判定前先读**真实基类**（`UIBasePanel` / `BaseView` 等）确认其生命周期与 API，
-  不要把插件文档里的方法名当唯一事实来源。
+- 判定前先读**真实基类**（`UIBasePanel` / `BaseView` 等）确认其生命周期与 API。
 
 ## 审查维度
 [详细审查规则...]
 ```
 
-**输出格式 `GUI_REVIEW.md`**：
+**Type-B 输出 `GUI_REVIEW.md`**：
 ```markdown
 # GUI Review: <panelId>
 
@@ -381,22 +383,11 @@ tools: Read, Grep, Glob, LSP
 ## Critical Issues
 1. [CRITICAL] <描述> @ <file>:<line> — 修复建议: ...
 
-## Major Issues
-1. [MAJOR] <描述> @ <file>:<line> — 修复建议: ...
-
-## Minor Issues
-1. [MINOR] <描述> @ <file>:<line> — 修复建议: ...
+## Major Issues / Minor Issues
+...
 ```
 
-**Gate**：CRITICAL == 0 → 跳过 Phase 7，直接进入 Phase 6 验证
-
----
-
-### Phase 6: gui-verify — 验证门
-
-**职责**：执行 Type-A（self-check）和 Type-B（subagent judge）验证，输出 6 态裁决。
-
-#### Type-A 门（orchestrator 自行判断）
+#### Type-A 车道（orchestrator 自跑，等 subagent 期间并行）
 
 > ⚠ 全程**无中途 HUMAN_CHECKPOINT**：agent 把能机器验证的全做完，凡需人确认的项
 > （运行期打开 panel 截图、Excel 配置正确性、未解决的 CRITICAL 等）一律**汇总进
@@ -414,15 +405,15 @@ tools: Read, Grep, Glob, LSP
 | 生成文件优先工具导出 | 检查 `*_viewmodel.lua` / `*ViewModel.cs` 的 diff；带 `TODO(模拟导出)` 标记的手改（工具导出失败兜底）判 `BLOCKED` 待重新导出、不判 failed；无标记手改仍判 failed（`*_data.lua` 例外：导出失败时镜像写入） |
 | 配置 Excel↔data 同步 | Excel 源表与对应 `*_data.lua` 改动一致（模拟导表已正确镜像） |
 
-#### Type-B 门（subagent judge）
+> Type-B 车道的检查项即上文品味维度（交互逻辑正确性 / 性能反模式 / UI 布局合理性等），由
+> `gui-reviewer` subagent 与本 Type-A 车道**并行**跑出。
 
-需要品味/领域知识：
+#### 汇合 → 合并 CRITICAL 集合
 
-| 检查项 | 验证方式 |
-|--------|---------|
-| 交互逻辑正确性 | subagent 模拟用户操作流程，检查状态转换 |
-| 性能反模式 | subagent 扫描 Update/FixedUpdate 中的危险操作 |
-| UI 布局合理性 | subagent 检查 anchors、pivot、层级结构 |
+两车道回来后，orchestrator 合并 CRITICAL：
+`{Type-A 编译失败}` ∪ `{Type-A Lua 语法错误}` ∪ `{Type-B 报的 CRITICAL}`。编译/语法失败**升为
+CRITICAL**（补上原设计漏洞：编译错误也能触发修复循环）；机械门的 `BLOCKED`/`NOT_APPLICABLE`
+（缺能力/不适用）**不进** CRITICAL 集合，只记 `HUMAN_REVIEW.md`。
 
 #### 6 态裁决（从 ARIS assurance-contract 迁移）
 
@@ -460,9 +451,10 @@ tools: Read, Grep, Glob, LSP
 
 ---
 
-### Phase 7: gui-improve — 迭代修复循环
+### Phase 6: gui-improve — 迭代修复循环
 
-**职责**：对 CRITICAL 问题进行修复 → 重新审查 → 重新验证，最多 2 轮。
+**职责**：对合并 CRITICAL（Type-A 编译/语法失败 + Type-B CRITICAL）修复 → 重跑 gui-review
+两车道，最多 2 轮。
 
 **流程**（从 ARIS auto-paper-improvement-loop 迁移）：
 ```
@@ -481,7 +473,7 @@ Round 2（如仍有 CRITICAL）:
 
 2 轮后仍有 CRITICAL:
   → 把未解决项写入 HUMAN_REVIEW.md（逐条 file:line + 原因），不暂停
-  → 继续跑完 gui-verify + gui-learn，由最终人工清单统一收口
+  → 继续跑完 gui-review 重跑 + gui-learn，由最终人工清单统一收口
 ```
 
 **Bias Guard 实现**：
@@ -495,7 +487,7 @@ Round 2（如仍有 CRITICAL）:
     - 之前 subagent 的 threadId
   只传递：
     - 当前代码文件
-    - GUI_PRD.md
+    - GUI_PLAN.md
     - 相关 shared-references
 ```
 
@@ -520,7 +512,7 @@ Round 2（如仍有 CRITICAL）:
 
 ---
 
-### Phase 8: gui-learn — 知识沉淀
+### Phase 7: gui-learn — 知识沉淀
 
 **职责**：从本次开发（修 bug 或做需求）中提取经验，回写知识库。**核心是「泛化」**——
 不只记录「这个 panel 发生了什么」，更要从 bug 现象 / 用户需求描述里抽出**可跨 panel 复用**的
@@ -787,7 +779,7 @@ _由 graph/edges.jsonl 渲染_
 # 完整 pipeline（由 orchestrator 串联）
 /dev-gui-plugin:gui-plan
   → gui-draft → gui-prefab → gui-config
-  → gui-review → gui-verify → gui-improve → gui-learn
+  → gui-review → gui-improve → gui-learn
 
 # 单独使用某个阶段
 /dev-gui-plugin:gui-review          # 仅审查已有 GUI 代码
@@ -819,13 +811,13 @@ ARIS 有 ~10,285 行 Python/Shell 代码（30 个文件），以下是迁移到 
 | 源文件 | 目标路径 | 改动说明 |
 |--------|---------|---------|
 | `tools/research_wiki.py` (998行) | `tools/gui_knowledge.py` | 替换实体模型（paper/idea/experiment/claim → bug/component/pattern/fix/lesson）；去掉 arXiv API 集成；保留并适配核心逻辑：`slugify`、`add_edge`、**`rebuild_query_pack`**（改我们的分段定额，§十.3）、**`render_connections`**（⑤ 由 edges 重渲染各页关联段）、**`find_existing`/`update_on_exist` 去重**（§十.7：新增 vs 补充 vs 冲突）、`rebuild_index`、`append_log`、`stats`；YAML frontmatter 渲染适配新 schema（含 `status` 字段） |
-| `tools/run_state.py` (260行) | `tools/gui_run_state.py` | 替换 phase 名称为 8 个 GUI pipeline 阶段；保留 done/accepted 分离逻辑（subagent 审查通过才能 accepted）；保留 resume_point、原子写入、文件锁 |
+| `tools/run_state.py` (260行) | `tools/gui_run_state.py` | 替换 phase 名称为 7 个 GUI pipeline 阶段；保留 done/accepted 分离逻辑（subagent 审查通过才能 accepted）；保留 resume_point、原子写入、文件锁 |
 
 ### 不迁移
 
 | 源文件 | 原因 |
 |--------|------|
-| `tools/verify_paper_audits.sh` (336行) | **多余** — GUI pipeline 的验证逻辑已内聚在 `gui-verify/SKILL.md` 和 `gui-improve/SKILL.md` 中，由 orchestrator 直接执行，不需要独立的外部 verifier shell 脚本 |
+| `tools/verify_paper_audits.sh` (336行) | **多余** — GUI pipeline 的验证逻辑已内聚在 `gui-review/SKILL.md`（Type-A ∥ Type-B 两车道）和 `gui-improve/SKILL.md` 中，由 orchestrator 直接执行，不需要独立的外部 verifier shell 脚本 |
 | `tools/verify_papers.py` (611行) | 论文元数据验证，GUI 场景无对应需求 |
 | `tools/arxiv_fetch.py` 等 5 个搜索脚本 | 学术搜索，GUI 场景无对应需求 |
 | `tools/extract_paper_style.py` (560行) | LaTeX 论文风格提取，GUI 场景无对应需求 |
@@ -842,7 +834,7 @@ ARIS 有 ~10,285 行 Python/Shell 代码（30 个文件），以下是迁移到 
 1. 复用已生成骨架 `.claude/skills/dev-gui-plugin/`，最终迁/发布为 marketplace 插件
 2. 编写 `.claude-plugin/plugin.json`（删除骨架里的 `"skills": ["./"]`，加 `$schema`，靠默认目录自动发现）
 3. 创建 `README.md`
-4. 创建 8 个 skill 目录 + SKILL.md 骨架（含标题和 description frontmatter）
+4. 创建 7 个 skill 目录 + SKILL.md 骨架（含标题和 description frontmatter）
 5. 创建 `agents/gui-reviewer.md` 骨架
 6. 创建 `gui-knowledge-seed/` 只读种子（README + index + 空 edges.jsonl）；运行期库写 `${CLAUDE_PLUGIN_DATA}`
 7. 创建 `hooks/hooks.json` + handlers（**统一 Python**：`python3 ${CLAUDE_PLUGIN_ROOT}/hooks-handlers/...`，
@@ -854,14 +846,14 @@ ARIS 有 ~10,285 行 Python/Shell 代码（30 个文件），以下是迁移到 
 
 ### 第二批：核心 skill 填充
 
-10. 完成 `gui-plan/SKILL.md` — 信息收集 + 知识库查询逻辑
+10. 完成 `gui-plan/SKILL.md` — plan mode 确认需求 + 人类审批逻辑
 11. 完成 `gui-draft/SKILL.md` — 自包含 MVVM 代码生成指引
 12. 完成 `gui-review/SKILL.md` — Subagent 审查流程 + Bias Guard
 13. 完成 `gui-learn/SKILL.md` — 知识沉淀流程（两遍式 + 机械筛 + 晋升 + query_pack，§十）
 
 ### 第三批：验证与修复体系
 
-14. 完成 `gui-verify/SKILL.md` — Type-A/B 门 + 6 态裁决
+14. 完成 `gui-review/SKILL.md` — 并行两车道（Type-B subagent ∥ Type-A 机械门）+ 合并 CRITICAL + 6 态裁决
 15. 完成 `gui-improve/SKILL.md` — 迭代修复循环
 16. 完成 `gui-prefab/SKILL.md` — Prefab 编辑指引
 17. 完成 `gui-config/SKILL.md` — 配置表编辑指引
@@ -891,10 +883,11 @@ ARIS 有 ~10,285 行 Python/Shell 代码（30 个文件），以下是迁移到 
 | 自包含 vs 引用外部 skill | 用户要求"不要耦合非 plugin 的 skill"。内容有少量重复，但换来完全独立演化和内聚 |
 | Subagent 审查 vs 跨模型 | 当前阶段不需要 GPT 审查 Claude；用独立 subagent + Bias Guard 即可实现类似效果 |
 | gui-knowledge 放 `${CLAUDE_PLUGIN_DATA}` | 用户决定。marketplace 分发下 `${CLAUDE_PLUGIN_ROOT}` 更新即替换、官方禁止写状态；故运行期知识库放持久化目录，**跨版本存活、不进 git、不团队共享**。插件仅内置只读 `gui-knowledge-seed/` 供首次初始化 |
-| 8 阶段 vs 更少 | UI Skill Lab 用 7 阶段控制 7 种漂移；对应 Unity GUI 的 4 种产出物（代码/Prefab/配置/知识）需各自审查+验证 |
+| 7 阶段 vs 更多/更少 | UI Skill Lab 用 7 阶段控制 7 种漂移；对应 Unity GUI 的 4 种产出物（代码/Prefab/配置/知识）需各自审查+验证。原独立的 gui-verify 已并入 gui-review——其 Type-B 与 gui-review 是同一个 reviewer 跑两遍的重复劳动，合并为「一个验证阶段、并行两车道」后由 8 阶段收敛为 7 |
+| gui-prefab ∥ gui-config 并行 + prefab 前置编译 | 用户决定。两阶段改的文件互不相交（`.prefab` vs Excel/`*_data.lua`），串行浪费墙钟——改为**并行组**：gui-prefab 跑主 agent、gui-config（涉及配置时）`run_in_background` spawn 到 subagent，orchestrator 在同一回合内用 `TaskOutput` 汇合并统一记两阶段状态，都落定后才进 gui-review。gui-prefab **改 prefab 前必须先触发 C# 编译**（View/ViewModel 进程序集、MonoScript GUID 就绪，才能挂脚本+绑 SerializeField），缺编译能力则 BLOCKED 不阻塞。状态机 `gui_run_state.py` 的 phase 顺序/语义/resume **不变**——并行是编排层行为；回合原子性保证 Stop 钩子看不到「prefab done 但 config pending」的中间态 |
 | 6 态裁决 vs 3 态 | ARIS 的 6 态能区分"没查"(NOT_APPLICABLE)和"查不了"(BLOCKED)和"查出错"(ERROR)，避免静默跳过 |
 | Pipeline 而非单体 | 参考前端 pipeline 最佳实践：每阶段控制一种漂移，Gate 失败时精确定位问题阶段，不必全流程重跑 |
-| 不迁移 verify_paper_audits.sh | 多余 — ARIS 用它是因为 paper-writing 的 Phase 6 需要外部非 LLM 进程做 SHA256 新鲜度/裁决校验。GUI pipeline 中验证逻辑已内聚在 gui-verify 和 gui-improve 两个 skill 中，由 orchestrator 直接串联 Type-A self-check + Type-B subagent judge，不需要额外 shell 包装 |
+| 不迁移 verify_paper_audits.sh | 多余 — ARIS 用它是因为 paper-writing 需要外部非 LLM 进程做 SHA256 新鲜度/裁决校验。GUI pipeline 中验证逻辑已内聚在 gui-review（Type-A ∥ Type-B 两车道）和 gui-improve 两个 skill 中，由 orchestrator 直接并行 Type-A self-check + Type-B subagent judge，不需要额外 shell 包装 |
 | 迁移 watchdog.py | 复用它 session 存活检测和状态聚合模式，适配为 GUI pipeline 阶段监控（检测各阶段是否卡死/超时） |
 | 迁移 lint_skills_helpers.sh | 复用它的硬编码路径检测逻辑，确保 plugin 内所有 SKILL.md 走统一的 `${CLAUDE_PLUGIN_ROOT}/tools/` 解析链 |
 | 迁移 capture_filter.py | 复用反自我污染机械筛（env / transient / negative-tool / single-instance），保护 gui-knowledge 不写入操作噪音、强制实例→类级；经 PreToolUse(Write) hook + gui-learn 第 0 步触发 |
@@ -982,7 +975,7 @@ ARIS 有 ~10,285 行 Python/Shell 代码（30 个文件），以下是迁移到 
 
 | 库 | 路径 | 性质 | 由谁写 | 创建 |
 |----|------|------|--------|------|
-| 私有库 | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | `gui-learn`（含 pipeline 第 8 阶段） | gui-plan 首次运行自动 init |
+| 私有库 | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | `gui-learn`（含 pipeline 第 7 阶段） | gui-plan 首次运行自动 init |
 | 公共库 | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | 项目共享、团队维护、走 p4 | `gui-learn-public`（仅手动） | 仅 gui-learn-public 显式写入时 init |
 
 - **共读**：SessionStart 注入、gui-plan、gui-draft 同时加载两库 query_pack；**公共库为权威**，矛盾以公共库为准。

@@ -13,7 +13,7 @@ description: >-
 
 **职责**：与 `gui-learn` 同样从本次开发提取经验、泛化、晋升、装配 query_pack，**唯一区别是写入目标
 是公共知识库**。**仅在用户主动声明**（如「把这条经验沉淀进公共库 / 项目库」）时调用；
-`/dev-gui-plugin:run` 流水线第 8 阶段仍调 `gui-learn`（写私有库）。
+`/dev-gui-plugin:run` 流水线第 7 阶段仍调 `gui-learn`（写私有库）。
 
 ## 写入目标
 

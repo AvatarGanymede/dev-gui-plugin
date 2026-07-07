@@ -3,14 +3,14 @@ name: gui-draft
 user-invocable: false
 description: >-
   Atom Game GUI pipeline 第 2 阶段。生成 MVVM 代码（Panel.lua + View.cs + 如需的 ViewModel）。
-  自包含的 MVVM 指引。在 gui-plan 产出 GUI_PRD.md 后使用。控制代码
-  实现漂移（相对需求规格）。
+  自包含的 MVVM 指引。在 gui-plan 产出 GUI_PLAN.md 后使用。控制代码
+  实现漂移（相对需求契约）。
 ---
 
 # Phase 2: gui-draft — MVVM 代码生成
 
 **职责**：自包含的 MVVM 代码生成。**控制：代码实现漂移。**
-输入：`GUI_PRD.md` + 两库 query_pack（私有 `${CLAUDE_PLUGIN_DATA}/gui-knowledge/query_pack.md`
+输入：`GUI_PLAN.md` + 两库 query_pack（私有 `${CLAUDE_PLUGIN_DATA}/gui-knowledge/query_pack.md`
 + 公共 `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/query_pack.md`，后者存在则读；矛盾以公共库为准）。
 
 > 动手前先读 `${CLAUDE_PLUGIN_ROOT}/shared-references/mvvm-contract.md`。
@@ -18,7 +18,9 @@ description: >-
 ## 核心规则
 
 - Panel (Lua) **写** ViewModel，View (C#) **只读**（单向数据流，靠 SharedArray 共享）。
-- 需新增/改 ViewModel 属性 → 走严格 3-Phase：ViewModelDes → 生成 → View/Panel（见 mvvm-contract §3，**生成产物就绪前禁写 Phase 3 代码**）。
+- **ViewModel 设计由 gui-plan 定死**（`GUI_PLAN.md` 的「ViewModel 设计」节）——本阶段**照抄写 ViewModelDes，不自行设计属性**。
+- 需新增/改 ViewModel 属性 → 走严格 5 步、**含两道 C# 编译硬门**（见 mvvm-contract §3）：
+  写 ViewModelDes → **编译①** → 工具导出 → **编译②** → 写 View/Panel。**两次编译不可跳过**（未编译则 generator 读不到定义、View 引用不到新常量）；**编译门②通过前禁写 View/Panel（§3 的 S5）代码**。
 - **生成文件优先工具导出、不优先手改** `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`：
   能用工具导出就不手改；**仅当工具导出失败/不可用时**才允许手改补齐（加 `TODO(模拟导出)` + 记 `HUMAN_REVIEW.md`，见 mvvm-contract §3）。
 - Panel：`<PanelName>Panel.lua` 继承 `UIBasePanel`；View：`<PanelName>View.cs` 继承 `BaseView`。
@@ -87,18 +89,27 @@ public class PanelNameView : BaseView
 
 ## 流程
 
-1. 读 GUI_PRD.md + 两库 query_pack（私有 + 公共，公共优先）相关坑点。
+1. 读 GUI_PLAN.md（含**已定死的模块拆分 + ViewModel 设计**）+ 两库 query_pack（私有 + 公共，公共优先）相关坑点。
 2. 读目标目录下**同类现有 panel** 与真实基类，对齐命名/生命周期/惯例。
-3. 判断模式：列表 / 可复用组件 / 世界坐标跟踪等场景先查 `shared-references/patterns/`（决策树见 `patterns/README.md`）。
-4. 生成 Panel.lua + View.cs（+ 走 3-Phase 处理 ViewModel 新增）。
-5. 自检 Gate（见下）。
-6. 记录状态：
+3. **按 GUI_PLAN 的「模块拆分」实现 root + 各子 View/子 Panel**（拆分为「单 View」则只出 root）；拆分的
+   引用关系/VM 归属见 `mvvm-contract.md §1.1`，子 View 实现细节见 `patterns/subview-pattern.md`。
+4. 判断模式：列表 / 可复用组件 / 世界坐标跟踪等场景先查 `shared-references/patterns/`（决策树见 `patterns/README.md`）。
+5. **若需新增/改 ViewModel 属性 → 按 mvvm-contract §3 的 5 步走**（无 ViewModel 变更可跳过 5b–5d）：
+   - **5a** 照抄 plan 的 ViewModel 契约写 `ViewModelDes/*.cs`（不自行设计属性）。
+   - **5b 编译门①**：触发 Unity C# 编译，让 ViewModelDes 进程序集（generator 靠反射读它）。缺编译能力 → `BLOCKED`。
+   - **5c** 工具导出 ViewModel（`*ViewModel.cs` / `*_viewmodel.lua` / Factory / define）；导出失败才手改补齐（见 §3 硬规则）。
+   - **5d 编译门②**：再次触发 C# 编译，让新常量进程序集。**此门通过前禁写 5e。**
+   - **5e** 生成 `Panel.lua` + `View.cs`（引用新常量 / 设 `self.rootViewModel.*`）。
+6. 自检 Gate（见下）。
+7. 记录状态：
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_run_state.py" set "${CLAUDE_PROJECT_DIR}" <panelId> gui-draft done
    ```
 
 ## Gate
 
+- ViewModelDes 字段与 `GUI_PLAN.md` 的 ViewModel 设计一致（照抄，无自创属性）。
+- 有 ViewModel 变更时，**两道编译门都已过**（编译①在导出前、编译②在写 View/Panel 前）；缺编译能力则该门记 `BLOCKED` 入 `HUMAN_REVIEW.md`。
 - Panel 写的每个 ViewModel 属性 → View 中有对应读取/绑定（双向匹配）。
 - 自动生成文件优先工具导出；若因导出失败手改，须带 `TODO(模拟导出)` 标记并记入 `HUMAN_REVIEW.md`。
 - 生命周期订阅↔退订配对。

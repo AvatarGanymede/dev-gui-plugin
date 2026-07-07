@@ -1,6 +1,6 @@
 # dev-gui-plugin
 
-> Atom Game GUI 开发全流程 Claude Code Plugin —— 从需求到交付的 **8 阶段 pipeline**，含
+> Atom Game GUI 开发全流程 Claude Code Plugin —— 从需求到交付的 **7 阶段 pipeline**，含
 > 长期记忆知识库、subagent 审查与 Type-A/B 验证门体系。
 
 借鉴 [ARIS](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep) 的知识库持久化、
@@ -28,30 +28,30 @@ claude --plugin-dir /path/to/dev-gui-plugin
 # 或先 add 本地路径：claude plugin marketplace add ./dev-gui-plugin
 ```
 
-## 8 阶段 Pipeline
+## 7 阶段 Pipeline
 
 | 阶段 | Skill | 职责 | 控制的漂移 |
 |------|-------|------|-----------|
-| 1 | `gui-plan` | 信息收集 + 知识库查询 → `GUI_PRD.md` | 需求理解 |
+| 1 | `gui-plan` | plan mode 交互确认需求 + 人类审批 → 精炼 `GUI_PLAN.md` 契约 | 需求理解 |
 | 2 | `gui-draft` | MVVM 代码生成（Panel.lua + View.cs） | 代码实现 |
 | 3 | `gui-prefab` | Prefab 编辑 + `[SerializeField]` 绑定 | Prefab 绑定 |
 | 4 | `gui-config` | 配置表编辑（Excel 源表 + 镜像 `*_data.lua`，可跳过） | 配置数据 |
-| 5 | `gui-review` | 独立 subagent 审查（Bias Guard）→ `GUI_REVIEW.md` | 逻辑质量 |
-| 6 | `gui-verify` | Type-A/B 验证门 → 6 态裁决 `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | — |
-| 7 | `gui-improve` | CRITICAL 迭代修复（最多 2 轮，每轮全新审查） | — |
-| 8 | `gui-learn` | 知识沉淀回写 `gui-knowledge`（两遍式 + 晋升 + query_pack） | — |
+| 5 | `gui-review` | **唯一验证门·并行两车道**：Type-B 独立 subagent 审查（Bias Guard）∥ Type-A 机械门（编译/luac/prefab/配置）→ `GUI_REVIEW.md` + 6 态裁决 `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | 逻辑质量 + 机器验证 |
+| 6 | `gui-improve` | 合并 CRITICAL 迭代修复（最多 2 轮，每轮重跑 gui-review 两车道） | — |
+| 7 | `gui-learn` | 知识沉淀回写 `gui-knowledge`（两遍式 + 晋升 + query_pack） | — |
 
 ### 调用
 
 ```
-# ★ 一键全自动（显式编排，推荐）：一条命令跑完 8 阶段，阶段间不停顿询问，
-#   缺必要信息时占位实现 + 留 TODO 注释，统一收口到 HUMAN_REVIEW.md
+# ★ 一键全自动（显式编排，推荐）：gui-plan 先进 plan mode 确认需求 + 人类审批，
+#   审批通过后从 gui-draft 起不停顿跑完余下阶段；缺必要信息时占位实现 + 留 TODO 注释，
+#   统一收口到 HUMAN_REVIEW.md
 /dev-gui-plugin:run BagPanel 新增批量出售按钮，prefab=Assets/UI/Bag.prefab
 
 # 完整 pipeline（从入口 skill 起，靠各阶段「→ 进入下一阶段」软串联）
 /dev-gui-plugin:gui-plan
   → gui-draft → gui-prefab → gui-config
-  → gui-review → gui-verify → gui-improve → gui-learn
+  → gui-review → gui-improve → gui-learn
 
 # 单独使用（仍对用户可见的入口）
 /dev-gui-plugin:gui-plan            # 手动从头跑 pipeline（软串联）
@@ -61,8 +61,8 @@ claude --plugin-dir /path/to/dev-gui-plugin
 /dev-gui-plugin:gui-learn-public    # 沉淀知识到【项目公共库】（团队共享/走 p4），并对私有库做去重 sweep
 ```
 
-> **表现层隐藏**：`gui-draft` / `gui-prefab` / `gui-config` / `gui-verify` / `gui-improve`
-> 这 5 个纯中间阶段在 frontmatter 设了 `user-invocable: false` —— **不出现在 `/` 菜单、用户无法手动调用**，
+> **表现层隐藏**：`gui-draft` / `gui-prefab` / `gui-config` / `gui-improve`
+> 这 4 个纯中间阶段在 frontmatter 设了 `user-invocable: false` —— **不出现在 `/` 菜单、用户无法手动调用**，
 > 但 Claude 仍可在 pipeline 中自动调用（其 description 始终在上下文里）。
 > 用户可见入口收敛为：`/dev-gui-plugin:run`（全自动）、`gui-plan`、`gui-review`、`gui-learn`、`gui-learn-public`。
 
@@ -73,7 +73,7 @@ claude --plugin-dir /path/to/dev-gui-plugin
 
 `/dev-gui-plugin:run` 做两件事把串联从「靠 skill 描述暗示」升级为「确定性编排」：
 
-1. **显式编排 prompt**：命令本体写死「依次执行全部 8 阶段、阶段间不得停顿询问、缺信息占位+TODO」，
+1. **显式编排 prompt**：命令本体写死「依次执行全部 7 阶段、阶段间不得停顿询问、缺信息占位+TODO」，
    并在开始时写一个自动驱动哨兵 `.autorun.json` 到本次 run 目录。
 2. **Stop hook 调度器**（`hooks-handlers/on_stop_continue.py`）：每当 agent 想停下，调度器读
    `run_state.json`，若本次 run 带哨兵且还有阶段未推进（状态非 `done/accepted/skipped`），就
@@ -136,7 +136,7 @@ dev-gui-plugin/
 | 工具 | 用途 |
 |------|------|
 | `gui_knowledge.py` | 知识库引擎：init / add-edge / render-connections / rebuild-query-pack / rebuild-index / find-existing / promote / demote / find-dedup-candidates / remove / stats / log |
-| `gui_run_state.py` | Pipeline 状态机：8 阶段、done vs accepted、resume、原子写入 + 文件锁 |
+| `gui_run_state.py` | Pipeline 状态机：7 阶段、done vs accepted、resume、原子写入 + 文件锁 |
 | `capture_filter.py` | 写入前机械筛：env / transient / negative-tool / single-instance 四类 |
 | `threat_scan.py` | query_pack 装配后注入扫描（命中加 DATA 横幅） |
 | `watchdog.py` | （可选）pipeline 健康监控：扫 run_state、标 STALLED/FAILED |

@@ -1,12 +1,12 @@
 ---
 name: gui-learn
 description: >-
-  Atom Game GUI pipeline 第 8 阶段（每次修 bug / 做需求完成后必做），也可单独调用沉淀知识。
+  Atom Game GUI pipeline 第 7 阶段（每次修 bug / 做需求完成后必做），也可单独调用沉淀知识。
   从本次开发提取经验回写**私有知识库** ${CLAUDE_PLUGIN_DATA}/gui-knowledge/：建实例层 bug/fix、
   泛化出通用层 component/pattern/lesson、写 edges、独立 reviewer 晋升 proposed→confirmed、
   重建 query_pack；promote/demote 时对公共库语义去重（公共库为准）。
   两遍式：默认捕获遍；`enrich` 参数触发充实遍填 _TODO_ 段。
-  **既是 pipeline 第 8 阶段自动调用，也可由用户手动 `/dev-gui-plugin:gui-learn` 主动沉淀私有库**；
+  **既是 pipeline 第 7 阶段自动调用，也可由用户手动 `/dev-gui-plugin:gui-learn` 主动沉淀私有库**；
   要沉淀进**项目公共库**则改用 gui-learn-public skill。
 ---
 

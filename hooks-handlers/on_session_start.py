@@ -66,12 +66,22 @@ def _export_session_id(event: dict) -> None:
     SessionStart hooks may bridge that gap via ``CLAUDE_ENV_FILE``, whose
     ``export`` lines are loaded for later Bash commands in this session.
 
-    Best-effort: any failure is swallowed (the run command tolerates an empty
-    session_id by writing an unscoped sentinel — old global behavior).
+    This is now load-bearing: ``/dev-gui-plugin:run`` and ``gui_run_state.py``
+    HARD-REQUIRE ``CLAUDE_SESSION_ID`` (the run dir is keyed ``panelId__sessionId``)
+    and refuse to start without it. So when the bridge cannot run, we no longer
+    fail silently — we emit a stderr warning naming WHICH hop failed, so the cause
+    is traceable when ``/run`` later aborts.
     """
     sid = event.get("session_id")
     env_file = os.environ.get("CLAUDE_ENV_FILE")
     if not sid or not env_file:
+        missing = "session_id (SessionStart event)" if not sid else "CLAUDE_ENV_FILE (env)"
+        sys.stderr.write(
+            "[dev-gui-plugin] SessionStart: cannot bridge session_id into Bash — "
+            f"missing {missing}. /dev-gui-plugin:run will refuse to start this session "
+            "(run state is session-scoped). If this recurs, update Claude Code or start a "
+            "fresh session.\n"
+        )
         return
     if any(c in sid for c in "\n\r\"'`$\\"):  # refuse to inject shell metacharacters
         return

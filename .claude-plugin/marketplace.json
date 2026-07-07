@@ -8,7 +8,7 @@
     {
       "name": "dev-gui-plugin",
       "source": "./",
-      "description": "Atom Game GUI 开发全流程 pipeline — 从需求到交付的 8 阶段自动化工作流，含长期记忆知识库和 subagent 审查体系",
+      "description": "Atom Game GUI 开发全流程 pipeline — 从需求到交付的 7 阶段自动化工作流，含长期记忆知识库和 subagent 审查体系",
       "author": {
         "name": "北林"
       },

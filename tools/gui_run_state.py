@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Resumable run-state for the dev-gui-plugin 8-phase pipeline.
+"""Resumable run-state for the dev-gui-plugin 7-phase pipeline.
 
-A GUI pipeline run (plan → draft → prefab → config → review → verify → improve →
-learn) can fail mid-run; without a record of *which phase* finished, a resume
-restarts from scratch. This helper models a run as an ordered list of phases with
-status, so resume can pick up where it left off.
+A GUI pipeline run (plan → draft → prefab → config → review → improve → learn)
+can fail mid-run; without a record of *which phase* finished, a resume restarts
+from scratch. This helper models a run as an ordered list of phases with status,
+so resume can pick up where it left off.
+
+Note: gui-review is now the single verification phase — it runs the independent
+Type-B reviewer subagent (Bias Guard) and the deterministic Type-A gates in
+parallel and emits the 6-state GUI_VERDICT.json. The former standalone gui-verify
+phase was merged into it.
 
 The increment over a naive "resume = reopen" — the status enum SPLITS execution
 from acceptance:
@@ -51,15 +56,72 @@ try:
 except ImportError:  # pragma: no cover - Windows
     fcntl = None  # type: ignore
 
-# The canonical 8 GUI pipeline phases (plan §三).
+# The canonical 7 GUI pipeline phases (plan §三). gui-review is the single
+# verification phase (parallel Type-A gates + Type-B reviewer subagent).
 GUI_PHASES = [
     "gui-plan", "gui-draft", "gui-prefab", "gui-config",
-    "gui-review", "gui-verify", "gui-improve", "gui-learn",
+    "gui-review", "gui-improve", "gui-learn",
 ]
 
 EXECUTOR_STATUSES = {"pending", "running", "done", "failed", "skipped"}
 TERMINAL_STATUSES = {"accepted", "skipped"}  # resume skips these
 ALL_STATUSES = EXECUTOR_STATUSES | {"accepted"}
+
+# Session scoping ------------------------------------------------------------
+# A run is keyed by ``<panelId>__<sessionId>`` so concurrent/sequential sessions
+# never share one panel's state file (panelId alone is NOT unique). All callers
+# pass the bare panelId; the storage key is composed HERE (single source of
+# truth), so the same panel under a different session resolves to a different
+# directory. Cross-session resume is a deliberate NON-goal: a new session = a new
+# id = a clean run.
+SESSION_ENV = "CLAUDE_SESSION_ID"
+
+_SESSION_HELP = (
+    "CLAUDE_SESSION_ID is missing — dev-gui run state is session-scoped and cannot be "
+    "created or located without it. Likely causes:\n"
+    "  1) this Claude Code version does not provide CLAUDE_ENV_FILE, so the SessionStart "
+    "hook could not bridge session_id into Bash;\n"
+    "  2) the plugin was enabled mid-session (its SessionStart hook never ran for this "
+    "session);\n"
+    "  3) the SessionStart event carried no session_id, or on_session_start.py failed.\n"
+    "Fix: start a NEW Claude Code session and retry; if it persists, update Claude Code or "
+    "check the dev-gui-plugin SessionStart hook. (Override explicitly with --session-id <id>.)"
+)
+
+
+class SessionIdMissing(RuntimeError):
+    """No session id available to scope the run. We refuse to fall back to a
+    non-scoped key — that is exactly what would let two sessions collide on one
+    panel's state."""
+
+
+def _resolve_session_id(explicit: Optional[str] = None) -> str:
+    sid = (explicit if explicit is not None else os.environ.get(SESSION_ENV, "")).strip()
+    if not sid:
+        raise SessionIdMissing(_SESSION_HELP)
+    return sid
+
+
+def _sanitize_component(s: str) -> str:
+    """Reduce a key component to the run-id charset ([A-Za-z0-9-_.])."""
+    return "".join(c if (c.isalnum() or c in "-_.") else "-" for c in s).strip("-")
+
+
+def storage_key(panel_id: str, session_id: str) -> str:
+    """Compose the session-scoped run id ``<panelId>__<sessionId>``.
+
+    Idempotent: if ``panel_id`` already ends with the ``__<sessionId>`` suffix
+    (a caller passed an already-composed key) it is returned unchanged rather
+    than double-suffixed. Raises on an empty panel id / session id.
+    """
+    pid = _sanitize_component(panel_id.strip())
+    sid = _sanitize_component(session_id.strip())
+    if not pid:
+        raise ValueError(f"empty/invalid panel id {panel_id!r}")
+    if not sid:
+        raise SessionIdMissing(_SESSION_HELP)
+    suffix = f"__{sid}"
+    return pid if pid.endswith(suffix) else f"{pid}{suffix}"
 
 
 def _now() -> str:
@@ -117,15 +179,46 @@ def _save(root: str, run_id: str, state: dict) -> None:
             raise
 
 
-def start_run(root: str, run_id: str, phases: list[str]) -> dict:
+def _build_metadata(pcraft_task_id: Optional[str], p4_changelist: Optional[str]) -> dict:
+    return {
+        "pcraft_task_id": pcraft_task_id or None,
+        "p4_changelist": p4_changelist or None,
+    }
+
+
+def _apply_metadata(state: dict, pcraft_task_id: Optional[str], p4_changelist: Optional[str]) -> bool:
+    metadata = state.setdefault("metadata", {})
+    changed = False
+    if pcraft_task_id:
+        if metadata.get("pcraft_task_id") != pcraft_task_id:
+            metadata["pcraft_task_id"] = pcraft_task_id
+            changed = True
+    if p4_changelist:
+        if metadata.get("p4_changelist") != p4_changelist:
+            metadata["p4_changelist"] = p4_changelist
+            changed = True
+    return changed
+
+
+def start_run(
+    root: str,
+    run_id: str,
+    phases: list[str],
+    pcraft_task_id: Optional[str] = None,
+    p4_changelist: Optional[str] = None,
+) -> dict:
     """Create a run with ordered phases, all `pending` (idempotent: won't clobber)."""
     with _lock(root, run_id):
         if _run_path(root, run_id).exists():
-            return _load(root, run_id)
+            state = _load(root, run_id)
+            if _apply_metadata(state, pcraft_task_id, p4_changelist):
+                _save(root, run_id, state)
+            return state
         state = {
             "run_id": run_id,
             "created": _now(),
             "updated": _now(),
+            "metadata": _build_metadata(pcraft_task_id, p4_changelist),
             "phases": [{"phase": ph, "status": "pending", "artifact": None,
                         "verdict_id": None, "reviewer": None, "updated": _now()} for ph in phases],
         }
@@ -226,33 +319,56 @@ def _print_status(state: dict) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="dev-gui-plugin resumable run-state (done vs accepted).")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("start"); s.add_argument("root"); s.add_argument("run_id"); s.add_argument("--phases", default=",".join(GUI_PHASES), help="comma-separated phase names (default: the 8 GUI phases)")
-    s = sub.add_parser("set"); s.add_argument("root"); s.add_argument("run_id"); s.add_argument("phase"); s.add_argument("status", choices=sorted(EXECUTOR_STATUSES)); s.add_argument("--artifact")
-    s = sub.add_parser("accept"); s.add_argument("root"); s.add_argument("run_id"); s.add_argument("phase"); s.add_argument("--verdict-id", required=True); s.add_argument("--reviewer", required=True); s.add_argument("--force", action="store_true")
-    s = sub.add_parser("resume"); s.add_argument("root"); s.add_argument("run_id")
-    s = sub.add_parser("status"); s.add_argument("root"); s.add_argument("run_id")
+    # --session-id overrides CLAUDE_SESSION_ID for the run-id-bearing subcommands;
+    # run_id is the bare panelId, composed to <panelId>__<sessionId> internally.
+    s = sub.add_parser("start"); s.add_argument("root"); s.add_argument("run_id"); s.add_argument("--phases", default=",".join(GUI_PHASES), help="comma-separated phase names (default: the 7 GUI phases)"); s.add_argument("--pcraft-task-id"); s.add_argument("--p4-changelist"); s.add_argument("--session-id")
+    s = sub.add_parser("set"); s.add_argument("root"); s.add_argument("run_id"); s.add_argument("phase"); s.add_argument("status", choices=sorted(EXECUTOR_STATUSES)); s.add_argument("--artifact"); s.add_argument("--session-id")
+    s = sub.add_parser("accept"); s.add_argument("root"); s.add_argument("run_id"); s.add_argument("phase"); s.add_argument("--verdict-id", required=True); s.add_argument("--reviewer", required=True); s.add_argument("--force", action="store_true"); s.add_argument("--session-id")
+    s = sub.add_parser("resume"); s.add_argument("root"); s.add_argument("run_id"); s.add_argument("--session-id")
+    s = sub.add_parser("status"); s.add_argument("root"); s.add_argument("run_id"); s.add_argument("--session-id")
     s = sub.add_parser("list"); s.add_argument("root")
+    # runid: print the composed <panelId>__<sessionId> key (asserts session id).
+    # Used by /run for its own filesystem ops (run dir / sentinel / run_meta).
+    s = sub.add_parser("runid"); s.add_argument("run_id"); s.add_argument("--session-id")
     a = ap.parse_args()
 
     try:
+        if a.cmd == "runid":
+            print(storage_key(a.run_id, _resolve_session_id(a.session_id)))
+            return 0
+
+        # All run-id-bearing subcommands are session-scoped: resolve the bare
+        # panelId to <panelId>__<sessionId> here (single source of truth). This
+        # also asserts a session id is available, failing closed if not.
+        if a.cmd in ("start", "set", "accept", "resume", "status"):
+            key = storage_key(a.run_id, _resolve_session_id(a.session_id))
+
         if a.cmd == "start":
-            _print_status(start_run(a.root, a.run_id, [p.strip() for p in a.phases.split(",") if p.strip()]))
+            _print_status(start_run(
+                a.root,
+                key,
+                [p.strip() for p in a.phases.split(",") if p.strip()],
+                pcraft_task_id=a.pcraft_task_id,
+                p4_changelist=a.p4_changelist,
+            ))
         elif a.cmd == "set":
-            _print_status(set_status(a.root, a.run_id, a.phase, a.status, a.artifact))
+            _print_status(set_status(a.root, key, a.phase, a.status, a.artifact))
         elif a.cmd == "accept":
-            _print_status(accept(a.root, a.run_id, a.phase, a.verdict_id, a.reviewer, force=a.force))
+            _print_status(accept(a.root, key, a.phase, a.verdict_id, a.reviewer, force=a.force))
         elif a.cmd == "resume":
-            rp = resume_point(a.root, a.run_id)
+            rp = resume_point(a.root, key)
             if rp is None:
                 print("COMPLETE"); return 0
             print(rp["phase"])  # machine-readable: the resume target phase name
             print(json.dumps(rp), file=sys.stderr)
         elif a.cmd == "status":
-            _print_status(_load(a.root, a.run_id))
+            _print_status(_load(a.root, key))
         elif a.cmd == "list":
             d = Path(a.root) / ".claude" / "dev-gui-runs"
             for f in sorted(d.glob("*/run_state.json")) if d.exists() else []:
                 print(f.parent.name)
+    except SessionIdMissing as e:
+        print(f"error: {e}", file=sys.stderr); return 1
     except (FileNotFoundError, KeyError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr); return 1
     return 0

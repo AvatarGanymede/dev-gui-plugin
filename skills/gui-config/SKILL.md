@@ -10,10 +10,14 @@ description: >-
 # Phase 4: gui-config — 配置表编辑（按需，可跳过）
 
 **职责**：自包含的配置表编辑。**控制：配置数据漂移（Excel 源表 vs lua data 不同步）。**
-若本需求不涉及配置数据 → **跳过**：
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_run_state.py" set "${CLAUDE_PROJECT_DIR}" <panelId> gui-config skipped
-```
+
+> **执行位置与并行**：本阶段**在 orchestrator 派发的 subagent 中执行**，与主 agent 的 gui-prefab（Phase 3）**并行**。
+> 本 subagent **只做配表编辑**，把结果**结构化返回给 orchestrator**：`edited`（改了哪些 Excel/`*_data.lua`）
+> / `skipped`（本需求不涉及配置）/ `blocked`（缺配表能力，需人工）+ 涉及的降级/TODO 说明。
+> **run_state 由 orchestrator（主 agent）统一记账**——本 subagent **不自行写 `gui_run_state.py`**
+> （会话作用域状态归主 agent，避免 subagent 缺 session env）。
+
+若本需求不涉及配置数据 → 返回 `skipped`（由 orchestrator 记 `set <panelId> gui-config skipped`）。
 
 ## 规则（优先工具导表，导出失败才手改镜像；零人工中断）
 
@@ -35,10 +39,12 @@ python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_run_state.py" set "${CLAUDE_PROJECT_DIR
 Excel 源表与对应 `*_data.lua` 改动**一致**（同字段、同值），运行期可读到新配置。
 
 > ⚠ 若本次因导出失败而**手改镜像**了 `*_data.lua`：它是**模拟产物**，正式 GDE 导表会覆盖它。
-> 故「确认 Excel 配置正确并正式导表」列入 `HUMAN_REVIEW.md`（gui-verify 末），
+> 故「确认 Excel 配置正确并正式导表」列入 `HUMAN_REVIEW.md`（gui-review 末），
 > **绝不在管线中途停顿**。（若已用工具正式导出，则无此遗留项。）
 
-记录状态后 → 进入 **gui-review**：
+编辑完成后 → **把结果返回 orchestrator**（`edited` + 改动文件 + 任何 `TODO(模拟导出)`/降级说明）。
+orchestrator 在主 agent 侧据此记账，并在 gui-prefab **也落定后**统一进入 gui-review：
 ```bash
+# ↓ 由 orchestrator（主 agent）执行，不在本 subagent 内跑
 python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_run_state.py" set "${CLAUDE_PROJECT_DIR}" <panelId> gui-config done
 ```
