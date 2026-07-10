@@ -259,7 +259,7 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 **核心规则（内嵌）**：
 - Panel (Lua) 写 ViewModel，View (C#) 只读
 - ViewModel 设计由 gui-plan 定死，gui-draft 照抄写 ViewModelDes、不自行设计
-- 需要新增/改 ViewModel 属性 → 走 §3 的 5 步、含两道 C# 编译硬门：写 ViewModelDes → 编译① → 工具导出 → 编译② → 写 View/Panel（编译②前禁写 View/Panel）
+- 需要新增/改 ViewModel 属性 → 走 §3 的 5 步、含两道 C# 编译硬门：写 ViewModelDes → 编译① → 工具导出 → 编译② → 写 View/Panel（编译②前禁写 View/Panel）。每次编译前先判断 Unity Editor 运行状态：运行中→unity-cli；未运行→Batch Mode（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`）。两路径均不可用→BLOCKED。
 - 生成文件 `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`：
   **优先工具导出，不优先手改**；仅当工具导出失败/不可用时才允许降级手改补齐（加 `TODO(模拟导出)` + 记 `HUMAN_REVIEW.md`）
 - Panel 文件名：`<PanelName>Panel.lua`，继承 `UIBasePanel`
@@ -283,10 +283,12 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 **职责**：自包含的 Prefab 编辑指引，不依赖外部 edit-prefab skill。**跑在主 agent**，
 与 gui-config（Phase 4，涉及配置时 spawn 到 subagent）**并行**；两阶段都落定后才进 gui-review。
 
-**前置 C# 编译（硬门，改 prefab 之前必做）**：先触发 Unity C# 编译，让 gui-draft 产出的 `View.cs`
-（及本次新增/改动的 ViewModel）**进程序集**——MonoScript 生成稳定 GUID 后才能挂脚本、`[SerializeField]`
-才在 Inspector 可见可绑。编译通过后才进入下面的编辑；缺编译能力 → 该门 `BLOCKED` 记入 `HUMAN_REVIEW.md`，不阻塞
-（措辞同 Phase 2 的两道编译门）。
+**前置 C# 编译（硬门，改 prefab 之前必做）**：先判断 Unity Editor 运行状态——**Editor 运行中**：
+通过 unity-cli 触发 C# 编译（先查 PlayMode 状态），编译通过后才能挂脚本+绑定 `[SerializeField]`；
+**Editor 未运行**：可通过 Batch Mode 编译（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`），
+生成 `.meta`、让 View/ViewModel 进程序集，但 **Batch Mode 无法编辑 Prefab**——Prefab 编辑本身判 `BLOCKED`
+记入 `HUMAN_REVIEW.md`「需在 Unity Editor 中人工挂脚本/绑定」；两路径均不可用 → 编译门 + Prefab 编辑均
+`BLOCKED`。编译通过后才进入下面的编辑。
 
 **编辑内容**：
 - 把 View.cs 脚本挂到 Prefab 根节点
@@ -297,7 +299,7 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 **工具使用**：不在插件内硬绑定 MCP。运行时若已加载 `unity-prefab` 等 Prefab 能力则选用；未加载则交人工编辑。
 
-**Gate**：① 改 prefab 前 C# 已编译通过（缺能力 → BLOCKED）；② View.cs 中每个 `[SerializeField]` 在 Prefab 中都有对应的绑定节点。
+**Gate**：① 改 prefab 前 C# 已编译通过（Editor 未运行→Batch Mode 编过但 Prefab 编辑 BLOCKED；两路径均不可用→BLOCKED）；② View.cs 中每个 `[SerializeField]` 在 Prefab 中都有对应的绑定节点。
 
 ---
 

@@ -42,7 +42,9 @@ description: >-
 
 3. **Type-A 车道（等 subagent 期间 orchestrator 自跑，机器可验证）**：逐项判
    `passed | failed | skipped`，缺能力判 `BLOCKED`/`NOT_APPLICABLE` 记入清单：
-   - **C# 编译**（有 Unity 能力则读 Console / refresh，否则 `BLOCKED`）
+   - **C# 编译**（按两路径规则：Editor 运行中 → unity-cli 读 Console / refresh；Editor 未运行 →
+     Batch Mode 编译（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`）；
+     两路径均不可用 → `BLOCKED`）
    - **Lua 语法**（`luac -p` 或热更无报错，否则 `BLOCKED`）
    - **Prefab 节点存在 / 绑定数量匹配**（有 Prefab 能力则核实，否则 `BLOCKED`）
    - **生成文件优先工具导出**（`*_viewmodel.lua` / `*ViewModel.cs` 的 diff；`*_data.lua` 例外）

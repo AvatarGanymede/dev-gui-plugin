@@ -34,11 +34,21 @@ description: >-
 
 ## 流程
 
-0. **前置 C# 编译（硬门，改 prefab 之前必做）**：先触发 Unity C# 编译，让 gui-draft 产出的
-   `<PanelName>View.cs`（及本次新增/改动的 ViewModel）**进程序集**——只有编译通过、MonoScript 生成
-   稳定 GUID 后，才能把 View 脚本挂到 Prefab 根节点、并让 `[SerializeField]` 字段在 Inspector 可见可绑。
-   **编译通过后才进入第 1 步**；编译报错先按报错修 draft 产物再重编。缺编译能力（Unity 未开 / 无对应刷新能力）
-   → 该门判 `BLOCKED` 记入 `HUMAN_REVIEW.md`，不阻塞（措辞同 `gui-draft` 4b/4d 两道编译门）。
+0. **前置：判断 Unity Editor 运行状态 + C# 编译（硬门，改 prefab 之前必做）**：
+   - **先通过 unity-cli 判断 Unity Editor 是否正在运行。**
+   - **Editor 运行中（unity-cli 可用）**：
+     - 先查 PlayMode 状态；若处于 PlayMode 且需退出，**先征求用户确认**。
+     - 通过 unity-cli 触发 C# 编译，让 gui-draft 产出的 `<PanelName>View.cs`（及本次新增/改动的 ViewModel）
+       **进程序集**——只有编译通过、MonoScript 生成稳定 GUID 后，才能把 View 脚本挂到 Prefab 根节点、
+       并让 `[SerializeField]` 字段在 Inspector 可见可绑。
+     - 编译通过后可以继续编辑 Prefab（挂脚本、绑定 `[SerializeField]`）。
+   - **Editor 未运行（unity-cli 不可用）**：
+     - 可通过 Batch Mode 编译（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`），
+       生成 `.meta` 文件、让 View/ViewModel 进程序集。
+     - **但 Batch Mode 无法编辑 Prefab**（不能挂脚本、不能绑定 `[SerializeField]`）→ Prefab 编辑本身判
+       `BLOCKED`，记入 `HUMAN_REVIEW.md`「需在 Unity Editor 中人工挂脚本/绑定」。
+   - **两路径均不可用（Editor 未开且无 Unity.exe）** → 编译门 + Prefab 编辑均判 `BLOCKED` 记入清单，不阻塞。
+   - 编译报错 → 先按报错修 draft 产物再重编。**编译通过后才进入第 1 步**。
 1. 列出 View.cs 中所有 `[SerializeField]` 字段（名称 + 类型）。
 2. 对照 Prefab hierarchy 逐一绑定（或记录待人工绑定项）。
 3. 校验 prefab-binding-contract 的清单（悬空字段 / 孤儿绑定 / 类型匹配 / 数量一致）。
@@ -49,7 +59,9 @@ description: >-
 
 ## Gate
 
-- **前置编译门**：改 prefab 前 C# 已编译通过（View/ViewModel 进程序集）；缺编译能力则该门 `BLOCKED`，记入清单，不阻塞。
+- **前置编译门**：改 prefab 前 C# 已编译通过（View/ViewModel 进程序集）。按两路径规则：Editor 运行中
+  → unity-cli 编译后继续编辑 prefab；Editor 未运行 → Batch Mode 编译可过但 **Prefab 编辑本身 BLOCKED**
+  （Batch Mode 无法操作 Prefab），记入 `HUMAN_REVIEW.md`；两路径均不可用 → BLOCKED。
 - View.cs 中每个 `[SerializeField]` 在 Prefab 中都有对应绑定节点（数量一致）。
   缺 Prefab 能力时该 Gate → `BLOCKED`，记入清单，不阻塞。
 

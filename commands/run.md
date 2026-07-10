@@ -128,10 +128,10 @@ fi
    plan mode，编排者主动 `EnterPlanMode`（已在则跳过）。plan mode 内**只做只读**：`Read`
    `code/LuaScripts/client/data/ui_data.lua` 定位 Prefab/脚本/ViewModel；用 SessionStart 已注入
    上下文的两库 query_pack 坑点。
-2. **优先查代码自答，尽量不提问**：需求有缺口时先穷尽代码仓库（`ui_data.lua`、同目录现有
-   panel/View/ViewModel、`shared-references`、已注入的 query_pack），能推断的一律自己定或占位 + 标 TODO；
-   **只有**查遍仍无法确定、且实质影响需求正确性时，才 `AskUserQuestion` 一次性问完（此阶段无哨兵，可停顿，
-   但把提问压到最少）。
+2. **查代码自答，无法确定必须提问**：需求有缺口时先穷尽代码仓库（`ui_data.lua`、同目录现有
+   panel/View/ViewModel、`shared-references`、已注入的 query_pack），能推断的一律自己定；
+   **无法从代码确定的、需要用户确认的，必须向用户提问澄清，不得用 TODO 占位绕过**。
+   用 `AskUserQuestion` 一次性问完所有此类问题（此阶段无哨兵，可停顿）。
 3. **写计划 → `ExitPlanMode` 等人类审批**。被拒/要求改 → 回 plan mode 按反馈改，再 `ExitPlanMode`，
    循环直到通过。
 
@@ -208,7 +208,7 @@ printf '{"nudges":0,"max_nudges":30,"command":"dev-gui:run","session_id":"%s"}' 
 |------|------|---------|---------|
 | 1 | `gui-plan` | **见步骤 2**：plan mode 交互确认需求 + 人类审批 → 审批后产出精炼 `GUI_PLAN.md` + 建哨兵 | — |
 | 2 | `gui-draft` | 生成 Panel.lua + View.cs（+ ViewModel）；**ViewModel 生成失败 → 改代码模拟导出（铁律 4）** | — |
-| 3+4 | `gui-prefab` ∥ `gui-config` | **并行组，见下方「并行组编排」**：主 agent 跑 prefab（**先触发 C# 编译再改 prefab**）+ 按需 background subagent 跑 config；两者落定后才进 review | prefab：`set gui-prefab done`（已记清单）；config：`skipped` |
+| 3+4 | `gui-prefab` ∥ `gui-config` | **并行组，见下方「并行组编排」**：主 agent 跑 prefab（**先判断 Editor 运行状态：运行中→unity-cli 编译后改 prefab；未运行→Batch Mode 编过但 prefab 编辑 BLOCKED**）+ 按需 background subagent 跑 config；两者落定后才进 review | prefab：`set gui-prefab done`（已记清单）；config：`skipped` |
 | 5 | `gui-review` | **唯一验证门·并行两车道**：Type-B spawn 独立 reviewer（Bias Guard，`run_in_background`）产出 `GUI_REVIEW.md` ∥ Type-A orchestrator 就地跑机械门（编译/luac/prefab/生成文件/配置）；汇合成合并 CRITICAL 集合 → `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | — |
 | 6 | `gui-improve` | **仅当 review 有合并 CRITICAL 时执行**（最多 2 轮，含编译/语法失败）；修完**重跑 gui-review 两车道**；**无 CRITICAL → `set gui-improve skipped`** | `skipped` |
 | 7 | `gui-learn` | 知识沉淀（捕获遍）回写**私有库** `${CLAUDE_PLUGIN_DATA}/gui-knowledge/`（沉淀进项目公共库是独立的手动 skill `gui-learn-public`，不在本自动流程内） | — |
@@ -223,8 +223,11 @@ Phase 3 与 Phase 4 **互不依赖**（prefab 绑定改 `.prefab`，配表改 Ex
    prompt 传 panelId + `GUI_PLAN.md` 契约 + 目标表，令其加载执行 `skills/gui-config/SKILL.md`，
    **只做配表编辑并把结果结构化返回**（`edited`/`skipped`/`blocked` + 改动文件 + 降级说明），
    **subagent 不写 run_state**（会话作用域状态归主 agent）。
-3. **主 agent 并行跑 gui-prefab**（`skills/gui-prefab/SKILL.md`）：**先触发 Unity C# 编译 → 编译通过 → 再挂脚本 + 绑定
-   `[SerializeField]`**（缺编译/prefab 能力则该门 `BLOCKED` 记 `HUMAN_REVIEW.md`，不阻塞）。编译与 config subagent 天然重叠。
+3. **主 agent 并行跑 gui-prefab**（`skills/gui-prefab/SKILL.md`）：**先判断 Unity Editor 运行状态** →
+   **Editor 运行中**：unity-cli 编译 → 编译通过 → 挂脚本 + 绑定 `[SerializeField]`；
+   **Editor 未运行**：Batch Mode 编译（`.meta` 生成 + 进程序集）通过，但 **Prefab 编辑本身 BLOCKED**
+   （记 `HUMAN_REVIEW.md`「需在 Unity Editor 中人工挂脚本/绑定」）；
+   两路径均不可用则编译门 + Prefab 编辑均 `BLOCKED`。编译与 config subagent 天然重叠。
 4. 主 agent 用 `TaskOutput` **等 config subagent 结束**，据其返回记账：
    `set <panelId> gui-config done`（或 `skipped`；`blocked`/降级项记 `HUMAN_REVIEW.md` 后仍按已推进置 `done`/`skipped`，**勿置 failed**）。
 5. 主 agent 记 `set <panelId> gui-prefab done`。

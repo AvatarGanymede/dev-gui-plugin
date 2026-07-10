@@ -11,7 +11,7 @@
 
 | 检查项 | 验证方式 | 缺能力时 |
 |--------|---------|----------|
-| C# 编译通过 | 运行时若已加载 Unity 编译/刷新能力则读 Console / 触发 refresh | 判 `BLOCKED`，记入清单 |
+| C# 编译通过 | 按两路径规则：Editor 运行中→unity-cli 读 Console / refresh；Editor 未运行→Batch Mode（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`）；两路径均不可用→`BLOCKED` | 判 `BLOCKED`，记入清单 |
 | Lua 语法正确 | `luac -p` 或热更无报错 | 判 `BLOCKED` |
 | Prefab 节点存在 | 读 Prefab hierarchy，核对 View 中 SerializeField 名称对应节点 | 判 `BLOCKED`/`NOT_APPLICABLE` |
 | 绑定数量匹配 | View 中 SerializeField 数量 vs Prefab 实际绑定数量 | 判 `BLOCKED` |

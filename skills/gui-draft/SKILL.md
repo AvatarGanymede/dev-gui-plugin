@@ -96,9 +96,14 @@ public class PanelNameView : BaseView
 4. 判断模式：列表 / 可复用组件 / 世界坐标跟踪等场景先查 `shared-references/patterns/`（决策树见 `patterns/README.md`）。
 5. **若需新增/改 ViewModel 属性 → 按 mvvm-contract §3 的 5 步走**（无 ViewModel 变更可跳过 5b–5d）：
    - **5a** 照抄 plan 的 ViewModel 契约写 `ViewModelDes/*.cs`（不自行设计属性）。
-   - **5b 编译门①**：触发 Unity C# 编译，让 ViewModelDes 进程序集（generator 靠反射读它）。缺编译能力 → `BLOCKED`。
-   - **5c** 工具导出 ViewModel（`*ViewModel.cs` / `*_viewmodel.lua` / Factory / define）；导出失败才手改补齐（见 §3 硬规则）。
-   - **5d 编译门②**：再次触发 C# 编译，让新常量进程序集。**此门通过前禁写 5e。**
+   - **5b 编译门①**：先通过 unity-cli 判断 Unity Editor 是否运行，再走对应路径触发 C# 编译，让 ViewModelDes
+     进程序集（generator 靠反射读它）。Editor 运行中 → unity-cli 编译（先查 PlayMode 状态）；Editor 未运行 →
+     Batch Mode 编译（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`）。
+     两路径均不可用 → `BLOCKED` 记入清单。
+   - **5c** 工具导出 ViewModel（`*ViewModel.cs` / `*_viewmodel.lua` / Factory / define）。Editor 运行中 →
+     通过 unity-cli 执行 `GenerateViewModel()`；Editor 未运行 → 通过 Batch Mode 执行 `GenerateViewModel()`；
+     导出失败才手改补齐（见 §3 硬规则）。
+   - **5d 编译门②**：再次触发 C# 编译（同 5b 两路径），让新常量进程序集。**此门通过前禁写 5e。**
    - **5e** 生成 `Panel.lua` + `View.cs`（引用新常量 / 设 `self.rootViewModel.*`）。
 6. 自检 Gate（见下）。
 7. 记录状态：
@@ -109,7 +114,7 @@ public class PanelNameView : BaseView
 ## Gate
 
 - ViewModelDes 字段与 `GUI_PLAN.md` 的 ViewModel 设计一致（照抄，无自创属性）。
-- 有 ViewModel 变更时，**两道编译门都已过**（编译①在导出前、编译②在写 View/Panel 前）；缺编译能力则该门记 `BLOCKED` 入 `HUMAN_REVIEW.md`。
+- 有 ViewModel 变更时，**两道编译门都已过**（编译①在导出前、编译②在写 View/Panel 前）；每道编译门前先判断 Unity Editor 运行状态（unity-cli vs Batch Mode），两路径均不可用则该门记 `BLOCKED` 入 `HUMAN_REVIEW.md`。
 - Panel 写的每个 ViewModel 属性 → View 中有对应读取/绑定（双向匹配）。
 - 自动生成文件优先工具导出；若因导出失败手改，须带 `TODO(模拟导出)` 标记并记入 `HUMAN_REVIEW.md`。
 - 生命周期订阅↔退订配对。
