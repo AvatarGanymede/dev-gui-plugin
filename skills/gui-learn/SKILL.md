@@ -1,19 +1,21 @@
 ---
 name: gui-learn
+user-invocable: false
 description: >-
-  Atom Game GUI pipeline 第 7 阶段（每次修 bug / 做需求完成后必做），也可单独调用沉淀知识。
+  Atom Game GUI pipeline 第 7 阶段（每次修 bug / 做需求完成后自动跑），不面向用户手动调用。
   从本次开发提取经验回写**私有知识库** ${CLAUDE_PLUGIN_DATA}/gui-knowledge/：建实例层 bug/fix、
   泛化出通用层 component/pattern/lesson、写 edges、独立 reviewer 晋升 proposed→confirmed、
   重建 query_pack；promote/demote 时对公共库语义去重（公共库为准）。
   两遍式：默认捕获遍；`enrich` 参数触发充实遍填 _TODO_ 段。
-  **既是 pipeline 第 7 阶段自动调用，也可由用户手动 `/dev-gui-plugin:gui-learn` 主动沉淀私有库**；
-  要沉淀进**项目公共库**则改用 gui-learn-public skill。
+  用户手动沉淀私有库请用 `/dev-gui-plugin:gui-learn-private` command；
+  沉淀进**项目公共库**用 `/dev-gui-plugin:gui-learn-public` command。
 ---
 
-# Phase 8: gui-learn — 知识沉淀
+# Phase 7: gui-learn — 知识沉淀
 
 **职责**：从本次开发中提取经验回写知识库。**核心是「泛化」**——不只记「这个 panel 发生了什么」，
-更要抽出**可跨 panel 复用**的通用教训/组件用法/性能经验。
+更要抽出**可跨 panel 复用**的通用教训/组件用法/性能经验。**不限于 GUI**：语法习惯、工具使用技巧、
+编辑器配置、调试方法、Shell 脚本模式等通用开发经验同样准入。
 
 ## 写入目标
 
@@ -21,13 +23,14 @@ description: >-
 下文所有 `gui_knowledge.py` 命令的 root 一律用 `"$KB_ROOT"`；首次写入前若目录不存在，先
 `gui_knowledge.py init "$KB_ROOT"`（gui-plan 通常已建）。
 
-> 沉淀进**项目公共库**（团队共享、走 p4）请改用 **`gui-learn-public`** skill。
+> 沉淀进**项目公共库**（团队共享、走 p4）请改用 **`gui-learn-public`** command。
 > Schema 见 `${CLAUDE_PLUGIN_ROOT}/shared-references/knowledge-schema.md`。
 > 机制总纲见 plan §十 与 `acceptance-gate.md`。
 > **私有库去重**：promote / demote 时对公共库查重（见第 7 步与 D 段），重复/矛盾以公共库为准。
 
 **触发条件**：① pipeline 中每次修 bug 或做需求完成（PASS 或 2 轮 improve 结束）自动跑；
-② **用户随时可手动调用** `/dev-gui-plugin:gui-learn` 主动把当前对话里学到的经验沉淀进私有库。
+② 本 skill 是 pipeline 内部阶段，**不面向用户手动调用**——用户手动沉淀私有库请用
+`/dev-gui-plugin:gui-learn-private` command。
 即使本次无 panel 级产物（纯逻辑/性能修复），只要学到可复用的东西也必须沉淀到通用层。
 
 ---
@@ -133,7 +136,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/tools/gui_knowledge.py" find-existing \
 
 ---
 
-## 模式 B：充实遍（`/dev-gui-plugin:gui-learn enrich [--max N]`）
+## 模式 B：充实遍（pipeline 内部调用，`enrich [--max N]`）
 
 把通用层骨架里 `_TODO._` 段填成 1–3 句结论（②）：
 - 默认只填**含 `_TODO._`** 的条目（可复用成分 / 适用场景 / 失败模式）。

@@ -11,7 +11,7 @@
 | 库 | 路径 | 性质 | 由谁写 | 创建 |
 |----|------|------|--------|------|
 | **私有库** | `${CLAUDE_PLUGIN_DATA}/gui-knowledge/` | 个人、跨版本、不进 git | `gui-learn`（含 pipeline 第 7 阶段） | gui-plan 首次运行自动 init |
-| **公共库** | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | 项目共享、团队维护、走 **p4** | `gui-learn-public`（仅手动调用） | **仅** gui-learn-public 显式写入时 init |
+| **公共库** | `${CLAUDE_PROJECT_DIR}/.claude/dev-gui-knowledge/` | 项目共享、团队维护、走 **p4** | `gui-learn-public` command（仅手动调用） | **仅** gui-learn-public 显式写入时 init |
 
 - **两库都被读**：SessionStart hook 注入、gui-plan、gui-draft 同时加载两库 query_pack。
   **公共库为权威**：两库内容若矛盾，以公共库为准（注入时公共库在前并标注）。
@@ -23,7 +23,7 @@
   - **点查**：`gui-learn` 在私有库条目 **promote / demote** 时，对该条查公共库。
   - **全量 sweep**：`gui-learn-public` 沉淀进公共库后，对私有库**全量**（`--all`）查一次——
     公共库刚增长，私有库里被它覆盖/矛盾的旧条目即时收敛删除。
-- **p4**：写公共库的工具只动文件系统，**不自动调 p4**；`gui-learn-public` 收尾提醒用户手动
+- **p4**：写公共库的工具只动文件系统，**不自动调 p4**；`gui-learn-public` command 收尾提醒用户手动
   `p4 edit/add/delete` + submit。
 
 ## 全局约定（借鉴 ARIS，plan §十）
@@ -168,16 +168,19 @@ status: proposed | confirmed          # confirmed 才进 query_pack
 _由 graph/edges.jsonl 渲染_
 ```
 
-## Lesson 条目（通用层核心 —— 通用教训 / 性能经验）
+## Lesson 条目（通用层核心 —— 通用教训 / 性能经验 / 开发技巧）
 
 文件：`lessons/<slug>.md`。段落用 scaffold 风格：捕获遍留 `_TODO._`，充实遍填成 1–3 句。
+
+**准入范围不限于 GUI**：语法习惯、工具使用技巧、编辑器配置、调试方法、Shell 脚本模式等
+通用开发经验均可作为 lesson 条目入库，只要满足「类级、正确、可复用」三标准。
 
 ```yaml
 ---
 type: lesson
 lesson_id: "L001"
 slug: "list-reuse-over-rebuild"
-category: general | performance | interaction-design | process
+category: general | performance | interaction-design | process | syntax | tooling | debugging | shell
 severity: high | medium | low
 source: bug | requirement | review       # 这条教训从哪来
 status: proposed | confirmed             # confirmed 才进 query_pack（⑥ 需 reviewer 背书）

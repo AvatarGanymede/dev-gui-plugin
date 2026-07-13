@@ -38,7 +38,7 @@ claude --plugin-dir /path/to/dev-gui-plugin
 | 4 | `gui-config` | 配置表编辑（Excel 源表 + 镜像 `*_data.lua`，可跳过） | 配置数据 |
 | 5 | `gui-review` | **唯一验证门·并行两车道**：Type-B 独立 subagent 审查（Bias Guard）∥ Type-A 机械门（编译/luac/prefab/配置）→ `GUI_REVIEW.md` + 6 态裁决 `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | 逻辑质量 + 机器验证 |
 | 6 | `gui-improve` | 合并 CRITICAL 迭代修复（最多 2 轮，每轮重跑 gui-review 两车道） | — |
-| 7 | `gui-learn` | 知识沉淀回写 `gui-knowledge`（两遍式 + 晋升 + query_pack） | — |
+| 7 | `gui-learn`（内部） | 知识沉淀回写 `gui-knowledge`（两遍式 + 晋升 + query_pack），`user-invocable: false`，pipeline 自动调用，用户不可手动触发 | — |
 
 ### 调用
 
@@ -54,17 +54,17 @@ claude --plugin-dir /path/to/dev-gui-plugin
   → gui-review → gui-improve → gui-learn
 
 # 单独使用（仍对用户可见的入口）
-/dev-gui-plugin:gui-plan            # 手动从头跑 pipeline（软串联）
-/dev-gui-plugin:gui-review          # 仅审查已有 GUI 代码
-/dev-gui-plugin:gui-learn           # 沉淀知识到【私有库】（捕获遍）
-/dev-gui-plugin:gui-learn enrich    # 充实遍：填通用层 _TODO_ 段（--max N 限批量）
-/dev-gui-plugin:gui-learn-public    # 沉淀知识到【项目公共库】（团队共享/走 p4），并对私有库做去重 sweep
+/dev-gui-plugin:gui-plan             # 手动从头跑 pipeline（软串联）
+/dev-gui-plugin:gui-review           # 仅审查已有 GUI 代码
+/dev-gui-plugin:gui-learn-private    # 沉淀知识到【私有库】（自动触发 reviewer 裁决晋升）
+/dev-gui-plugin:gui-learn-public     # 沉淀知识到【项目公共库】（团队共享/走 p4），并对私有库做去重 sweep
 ```
 
-> **表现层隐藏**：`gui-draft` / `gui-prefab` / `gui-config` / `gui-improve`
-> 这 4 个纯中间阶段在 frontmatter 设了 `user-invocable: false` —— **不出现在 `/` 菜单、用户无法手动调用**，
+> **表现层隐藏**：`gui-draft` / `gui-prefab` / `gui-config` / `gui-improve` / `gui-learn`
+> 这 5 个纯中间阶段在 frontmatter 设了 `user-invocable: false` —— **不出现在 `/` 菜单、用户无法手动调用**，
 > 但 Claude 仍可在 pipeline 中自动调用（其 description 始终在上下文里）。
-> 用户可见入口收敛为：`/dev-gui-plugin:run`（全自动）、`gui-plan`、`gui-review`、`gui-learn`、`gui-learn-public`。
+> 用户可见入口收敛为：`/dev-gui-plugin:run`（全自动 command）、`gui-plan`（skill）、`gui-review`（skill）、
+> `gui-learn-private`（command）、`gui-learn-public`（command）。
 
 > **命名空间**：插件命令的前缀是插件名，故命令实际为 `/dev-gui-plugin:run`。
 > 若想用更短的 `/dev-gui:run`，需把插件改名为 `dev-gui`（`plugin.json` + `marketplace.json` 的 `name`）。
@@ -117,8 +117,8 @@ dev-gui-plugin/
 ├── .claude-plugin/
 │   ├── plugin.json         # 插件清单
 │   └── marketplace.json    # 市场清单（本仓库即 marketplace）
-├── commands/run.md         # 一键全自动编排命令（/dev-gui-plugin:run）
-├── skills/                 # 9 个 skill（gui-plan … gui-learn / gui-learn-public）
+├── commands/                # 3 个 command（run / gui-learn-private / gui-learn-public）
+├── skills/                 # 8 个 skill（gui-plan … gui-learn）
 ├── agents/gui-reviewer.md  # 审查 / 晋升背书 subagent
 ├── hooks/hooks.json        # SessionStart 注入 query_pack；PreToolUse(Write|Edit) 跑 capture_filter；Stop 驱动 pipeline 串联
 ├── hooks-handlers/         # on_session_start.py · pre_write_filter.py · on_stop_continue.py（统一 Python）
