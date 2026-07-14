@@ -223,7 +223,8 @@ Phase 3 与 Phase 4 **互不依赖**（prefab 绑定改 `.prefab`，配表改 Ex
    prompt 传 panelId + `GUI_PLAN.md` 契约 + 目标表，令其加载执行 `skills/gui-config/SKILL.md`，
    **只做配表编辑并把结果结构化返回**（`edited`/`skipped`/`blocked` + 改动文件 + 降级说明），
    **subagent 不写 run_state**（会话作用域状态归主 agent）。
-3. **主 agent 并行跑 gui-prefab**（`skills/gui-prefab/SKILL.md`）：**先判断 Unity Editor 运行状态** →
+3. **主 agent 并行跑 gui-prefab**（`skills/gui-prefab/SKILL.md`）：**先 ToolSearch 主动搜索 Prefab 相关 skill/tool
+   （优先）及 Unity Editor 交互能力（fallback）→ 再判断 Unity Editor 运行状态** →
    **Editor 运行中**：unity-cli 编译 → 编译通过 → 挂脚本 + 绑定 `[SerializeField]`；
    **Editor 未运行**：Batch Mode 编译（`.meta` 生成 + 进程序集）通过，但 **Prefab 编辑本身 BLOCKED**
    （记 `HUMAN_REVIEW.md`「需在 Unity Editor 中人工挂脚本/绑定」）；
