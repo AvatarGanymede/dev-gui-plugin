@@ -2,7 +2,7 @@
 name: gui-review
 description: >-
   Atom Game GUI pipeline 第 5 阶段（唯一验证门）。并行两车道：Type-B 独立 gui-reviewer subagent
-  （Bias Guard，品味判断）+ Type-A orchestrator 机械门（编译/luac/prefab/生成文件/配置）。汇合成
+  （Bias Guard，品味判断）+ Type-A orchestrator 机械门（编译/LSP/prefab/生成文件/配置）。汇合成
   合并 CRITICAL 集合，产出 GUI_REVIEW.md + 6 态裁决 GUI_VERDICT.json + HUMAN_REVIEW.md。也可单独
   用于审查已有 GUI 代码。控制逻辑质量漂移 + 确定性验证。
 ---
@@ -45,7 +45,7 @@ description: >-
    - **C# 编译**（按两路径规则：Editor 运行中 → unity-cli 读 Console / refresh；Editor 未运行 →
      Batch Mode 编译（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`）；
      两路径均不可用 → `BLOCKED`）
-   - **Lua 语法**（`luac -p` 或热更无报错，否则 `BLOCKED`）
+   - **Lua 语法**（Claude Code LSP 诊断 `.lua` 文件；LSP 不可用则 `BLOCKED`）
    - **Prefab 节点存在 / 绑定数量匹配**（有 Prefab 能力则核实，否则 `BLOCKED`）
    - **生成文件优先工具导出**（`*_viewmodel.lua` / `*ViewModel.cs` 的 diff；`*_data.lua` 例外）
      - 例外：diff 带 `TODO(模拟导出)` 标记 → 判 `BLOCKED`「待工具正式重新导出覆盖」记入清单，

@@ -55,7 +55,7 @@ description: >-
      - 编译通过后可以继续编辑 Prefab（挂脚本、绑定 `[SerializeField]`）。
    - **Editor 未运行（unity-cli 不可用）**：
      - 可通过 Batch Mode 编译（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`），
-       生成 `.meta` 文件、让 View/ViewModel 进程序集。
+       让 View/ViewModel 进程序集（`.meta` 文件由 csharp-tool 生成，不依赖 Unity 编译）。
      - **但 Batch Mode 无法编辑 Prefab**（不能挂脚本、不能绑定 `[SerializeField]`）→ Prefab 编辑本身判
        `BLOCKED`，记入 `HUMAN_REVIEW.md`「需在 Unity Editor 中人工挂脚本/绑定」。
    - **两路径均不可用（Editor 未开且无 Unity.exe）** → 编译门 + Prefab 编辑均判 `BLOCKED` 记入清单，不阻塞。

@@ -259,7 +259,7 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 **核心规则（内嵌）**：
 - Panel (Lua) 写 ViewModel，View (C#) 只读
 - ViewModel 设计由 gui-plan 定死，gui-draft 照抄写 ViewModelDes、不自行设计
-- 需要新增/改 ViewModel 属性 → 走 §3 的 5 步、含两道 C# 编译硬门：写 ViewModelDes → 编译① → 工具导出 → 编译② → 写 View/Panel（编译②前禁写 View/Panel）。每次编译前先判断 Unity Editor 运行状态：运行中→unity-cli；未运行→Batch Mode（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`）。两路径均不可用→BLOCKED。
+- 需要新增/改 ViewModel 属性 → 走 mvvm-contract §3 的 4 步：写 ViewModelDes (S1) → csharp-tool 导出 (S2, Roslyn 解析源码、不依赖 Unity 反射、无需前置编译) → 写 View/Panel (S3) → 编译 (S4, 能连 Unity Editor 时通过 unity-cli 或 Batch Mode 触发；两路径均不可用→BLOCKED)。
 - 生成文件 `*_viewmodel.lua` / `*ViewModel.cs` / `AtomViewModelFactory.cs` / `ui_viewmodel_define.lua`：
   **优先工具导出，不优先手改**；仅当工具导出失败/不可用时才允许降级手改补齐（加 `TODO(模拟导出)` + 记 `HUMAN_REVIEW.md`）
 - Panel 文件名：`<PanelName>Panel.lua`，继承 `UIBasePanel`
@@ -286,7 +286,7 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 **前置 C# 编译（硬门，改 prefab 之前必做）**：先判断 Unity Editor 运行状态——**Editor 运行中**：
 通过 unity-cli 触发 C# 编译（先查 PlayMode 状态），编译通过后才能挂脚本+绑定 `[SerializeField]`；
 **Editor 未运行**：可通过 Batch Mode 编译（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`），
-生成 `.meta`、让 View/ViewModel 进程序集，但 **Batch Mode 无法编辑 Prefab**——Prefab 编辑本身判 `BLOCKED`
+让 View/ViewModel 进程序集（`.meta` 由 csharp-tool 生成），但 **Batch Mode 无法编辑 Prefab**——Prefab 编辑本身判 `BLOCKED`
 记入 `HUMAN_REVIEW.md`「需在 Unity Editor 中人工挂脚本/绑定」；两路径均不可用 → 编译门 + Prefab 编辑均
 `BLOCKED`。编译通过后才进入下面的编辑。
 
@@ -401,7 +401,7 @@ tools: Read, Grep, Glob, LSP
 | 检查项 | 验证方式 |
 |--------|---------|
 | C# 编译通过 | 运行时若已加载 Unity 编译/刷新能力则读 Console / 触发 refresh；否则判 `BLOCKED` 记入清单 |
-| Lua 语法正确 | `luac -p` 或热更无报错 |
+| Lua 语法正确 | Claude Code LSP（`lua-language-server`）诊断 `.lua` 文件 |
 | Prefab 节点存在 | 读 Prefab hierarchy，检查 View 中 SerializeField 名称对应的节点 |
 | 绑定数量匹配 | View 中 SerializeField 数量 vs Prefab 中实际绑定数量 |
 | 生成文件优先工具导出 | 检查 `*_viewmodel.lua` / `*ViewModel.cs` 的 diff；带 `TODO(模拟导出)` 标记的手改（工具导出失败兜底）判 `BLOCKED` 待重新导出、不判 failed；无标记手改仍判 failed（`*_data.lua` 例外：导出失败时镜像写入） |

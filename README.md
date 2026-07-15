@@ -36,7 +36,7 @@ claude --plugin-dir /path/to/dev-gui-plugin
 | 2 | `gui-draft` | MVVM 代码生成（Panel.lua + View.cs） | 代码实现 |
 | 3 | `gui-prefab` | Prefab 编辑 + `[SerializeField]` 绑定 | Prefab 绑定 |
 | 4 | `gui-config` | 配置表编辑（Excel 源表 + 镜像 `*_data.lua`，可跳过） | 配置数据 |
-| 5 | `gui-review` | **唯一验证门·并行两车道**：Type-B 独立 subagent 审查（Bias Guard）∥ Type-A 机械门（编译/luac/prefab/配置）→ `GUI_REVIEW.md` + 6 态裁决 `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | 逻辑质量 + 机器验证 |
+| 5 | `gui-review` | **唯一验证门·并行两车道**：Type-B 独立 subagent 审查（Bias Guard）∥ Type-A 机械门（编译/LSP/prefab/配置）→ `GUI_REVIEW.md` + 6 态裁决 `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | 逻辑质量 + 机器验证 |
 | 6 | `gui-improve` | 合并 CRITICAL 迭代修复（最多 2 轮，每轮重跑 gui-review 两车道） | — |
 | 7 | `gui-learn`（内部） | 知识沉淀回写 `gui-knowledge`（两遍式 + 晋升 + query_pack），`user-invocable: false`，pipeline 自动调用，用户不可手动触发 | — |
 

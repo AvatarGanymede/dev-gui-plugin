@@ -63,44 +63,43 @@
 - 生成的 ViewModel 常量为**全大写**：`MyViewModel.CURRENTHP`、`MyViewModel.PLAYERINFO`。
 - View 字段惯例：`[SerializeField] private AtomUIText m_HpText;`（`m_` 前缀，按项目惯例确认）。
 
-## 3. 变更流程（新增/改 ViewModel 属性时）——显式 5 步、含两道编译硬门
+## 3. 变更流程（新增/改 ViewModel 属性时）——显式 4 步
 
 ViewModel 属性的**设计（字段名/类型/是否 list/子 VM）由 gui-plan 在 `GUI_PLAN.md` 定死**；
 gui-draft **照抄该契约写 ViewModelDes，不自行设计属性**。生成文件**优先用工具导出、不优先手改**。
-整个变更须按下面 5 步顺序走（**S2、S4 两次 C# 编译是硬门，不可跳过/乱序**——Unity codegen 靠反射，
-不编译则读不到定义；新常量不编译则 View 引用不到）：
+**csharp-tool 独立于 Unity Editor，GenerateViewModel 不要求前置 Unity 编译**——整个变更按下面 4 步走：
 
 ```
-S1 写 ViewModelDes ─⛔编译门①─ S3 工具导出 ─⛔编译门②─ S5 写 View+Panel
-     (Phase 1)        (S2 编译)     (Phase 2)      (S4 编译)     (Phase 3)
+S1 写 ViewModelDes ─ S2 csharp-tool 导出 ─ S3 写 View+Panel ─ S4 编译（能连 Unity Editor 时）
 ```
 
-### 前置：判断 Unity Editor 运行状态（每次编译/导出/改 Prefab 前必做）
+### 前置：判断 Unity Editor 运行状态（编译前必做）
 
-Unity 编译与 GenerateViewModel 有**两条路径**，每次涉及编译或工具导出前先判断 Editor 是否正在运行：
+Unity **C# 编译**有**两条路径**，涉及编译时先判断 Editor 是否正在运行。
+**GenerateViewModel 与 `.meta` 文件生成统一走 csharp-tool**（`${CLAUDE_PROJECT_DIR}\tools\csharp-tool\`），
+独立于 Unity Editor，不在此两路径内。详见 `shared-references/csharp-tool.md`。
 
 1. **先通过 unity-cli 判断 Unity Editor 是否正在运行**（unity-cli 需要与运行中的 Editor 通信）。
 2. **Editor 正在运行（unity-cli 可用）**：
    - 编译：通过 unity-cli 触发 C# 编译/刷新
-   - 工具导出（GenerateViewModel）：通过 unity-cli 执行 generator
    - **触发编译前先查 PlayMode 状态**；若处于 PlayMode 且需退出，**先征求用户确认**
    - **不要**凭记忆猜 unity-cli 语法，先看 `cs.py exec -h` 确认
 3. **Editor 未运行（unity-cli 不可用）**：
    - 使用 **Unity Batch Mode** 命令行执行：
      - `./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit <args>`
-   - Batch Mode **能做**：C# 编译（自动生成 `.meta` 文件）、执行 GenerateViewModel
+   - Batch Mode **能做**：C# 编译
    - Batch Mode **不能做**：编辑 Prefab、在 Inspector 中绑定 `[SerializeField]`（这些需运行中的 Editor）
-   - 编译失败 → 按报错修代码再重编；生成 `.meta` 由 Unity 自动处理
-4. **既无 unity-cli（Editor 未开）也无法跑 Batch Mode（无 Unity.exe）** → 编译门判 `BLOCKED` 记入 `HUMAN_REVIEW.md`，管线不阻塞。
+   - 编译失败 → 按报错修代码再重编
+4. **既无 unity-cli（Editor 未开）也无法跑 Batch Mode（无 Unity.exe）** → 编译判 `BLOCKED` 记入 `HUMAN_REVIEW.md`，管线不阻塞。
+5. **csharp-tool（独立于 Editor）**：
+   - **`.meta` 文件生成**：新增 C# 文件后通过 csharp-tool 生成 `.meta`，不依赖 Unity 编译
+   - **GenerateViewModel**：通过 csharp-tool 执行 generator，不依赖 Unity Editor 运行状态，**不要求前置编译**
+   - csharp-tool 不可用 → GenerateViewModel / `.meta` 均判 `BLOCKED` 记入清单
 
-- **S1（原 Phase 1）**：按 `GUI_PLAN.md` 的 ViewModel 契约编辑 `ViewModelDes/*.cs` 增/删/改字段。
+- **S1**：按 `GUI_PLAN.md` 的 ViewModel 契约编辑 `ViewModelDes/*.cs` 增/删/改字段。
   **此阶段不碰任何其他文件。**
-- **S2 编译门①（硬门）**：**触发 Unity C# 编译**，让新改的 ViewModelDes 进程序集——generator 靠反射
-  读取 ViewModelDes，**未编译则读不到新定义、导出出旧结构**。按上面前置规则判断 Editor 状态后走对应路径；
-  缺编译能力则判 `BLOCKED` 记入清单。
-- **S3（原 Phase 2）**：编译通过后用工具导出 ViewModel。根据 Editor 状态选路径：
-  - Editor 运行中 → 通过 unity-cli 执行 `GenerateViewModel()`
-  - Editor 未运行 → 通过 Batch Mode 执行 `GenerateViewModel()`（`-executeMethod` 或等效方式）
+- **S2**：通过 **csharp-tool** 导出 ViewModel（独立于 Editor，不要求前置 Unity 编译）。
+  csharp-tool 不可用 → 判 `BLOCKED`，降级手改补齐（见下方硬规则）。
   - generator 入口（项目本地）：`Game.UI.ViewModelDes.CodeGen.ViewModelCodeGenerator.GenerateViewModel();`
     （文件 `client/PackageRepo/com.jngame.atom-gui/Editor/CodeGen/ViewModelCodeGenerator.cs`）。
   - 生成产物：C# `*ViewModel.cs`（常量）、Lua `*_viewmodel.lua`（属性名→ID 映射）、
@@ -108,24 +107,23 @@ Unity 编译与 GenerateViewModel 有**两条路径**，每次涉及编译或工
   - **reconcile 路径推算**：从 `[ViewModel("group","lua_filename")]` 推出
     `code/LuaScripts/client/ui/{group}/{lua_filename}.lua` 与 `.../ViewModel/{ClassName}ViewModel.cs`，
     全局文件 `AtomViewModelFactory.cs`、`ui_viewmodel_define.lua` 每次必更新。记录这些路径供 reconcile 用。
-- **S4 编译门②（硬门）**：**再次触发 Unity C# 编译**，让新生成的 `*ViewModel.cs` 常量进程序集——
-  **未编译则 S5 的 View 引用 `MyViewModel.NEWPROP` 会编译错误、Lua 映射缺失会静默失败**。
-  **此门通过（= 生成产物齐全且已编译）前禁止进入 S5**；无论工具导出成功、还是导出失败后手改补齐
-  （见下方例外），都须以此为准。按前置规则判断 Editor 状态后走对应路径；缺编译能力同样判 `BLOCKED`。
-- **S5（原 Phase 3）**：编辑 C# View（引用 `MyViewModel.NEWPROP`）+ Lua Panel（设 `self.rootViewModel.NewProp`）。
+- **S3**：编辑 C# View（引用 `MyViewModel.NEWPROP`）+ Lua Panel（设 `self.rootViewModel.NewProp`）。
+  csharp-tool 已生成产物（或已在 S2 降级手改补齐），**此时即可直接引用新常量、写 View/Panel 逻辑**。
+- **S4 编译**：**触发 Unity C# 编译**，让 ViewModelDes + 新生成的 `*ViewModel.cs` + View.cs 全部进程序集，
+  验证整体编译通过。按前置规则判断 Editor 状态后走对应路径（unity-cli 或 Batch Mode）；两路径均不可用 →
+  判 `BLOCKED` 记入 `HUMAN_REVIEW.md`。编译报错 → 按报错修代码再重编。
 
-> 纯 Lua 改动（不涉及 ViewModelDes/新常量）**不触发** C# 编译门。两道编译门只在本 5 步（有 ViewModel 属性
-> 增改）时生效。
+> 纯 Lua 改动（不涉及 ViewModelDes/新常量）**不触发** C# 编译。编译只在本 4 步（有 ViewModel 属性增改 /
+> 新增 C# View）时涉及。
 
 > **硬规则：优先工具导出，导出失败才手改。**
-> 1. **首选**：用工具（unity-cli（Editor 运行中）或 Batch Mode（Editor 未运行）执行 generator）正式导出生成
->    ViewModel 文件。能用工具就**不要**手改。
-> 2. **导出失败 / 工具不可用（Editor 未开且无 Batch Mode）/ 不能退 PlayMode → 允许手改补齐**
+> 1. **首选**：用 csharp-tool 执行 generator 正式导出生成 ViewModel 文件。能用工具就**不要**手改。
+> 2. **csharp-tool 不可用 / 导出失败 → 允许手改补齐**
 >    （**不卡管线、不优先**）：按上面的 reconcile 路径推算，手写本应由 generator 产出的内容——`*ViewModel.cs`
 >    常量、`*_viewmodel.lua` 属性名→ID 映射，并在 `AtomViewModelFactory.cs`、`ui_viewmodel_define.lua` 补对应
 >    条目（仿照同文件里现有条目的写法）。每处加 `// TODO(模拟导出): 工具导出失败手改，待工具正式重新导出覆盖`
->    （Lua 用 `--`），并汇总进 `HUMAN_REVIEW.md`。手改补齐（视同 S3 产物就绪）后仍须过 **S4 编译门②** 才可进
->    S5；实在写不出（如无法定位现有条目格式）才将本步 `skipped` 并记 TODO。
+>    （Lua 用 `--`），并汇总进 `HUMAN_REVIEW.md`。手改补齐后即可进入 S3 写 View/Panel；实在写不出
+>    （如无法定位现有条目格式）才将本步 `skipped` 并记 TODO。
 > 3. 手改是**降级兜底**，不是常态：手改产物视为待复核，正式工具重新导出会覆盖它（记入 `HUMAN_REVIEW.md`）。
 
 ## 4. 在 Panel 中创建 ViewModel

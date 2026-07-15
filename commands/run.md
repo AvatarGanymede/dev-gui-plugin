@@ -209,7 +209,7 @@ printf '{"nudges":0,"max_nudges":30,"command":"dev-gui:run","session_id":"%s"}' 
 | 1 | `gui-plan` | **见步骤 2**：plan mode 交互确认需求 + 人类审批 → 审批后产出精炼 `GUI_PLAN.md` + 建哨兵 | — |
 | 2 | `gui-draft` | 生成 Panel.lua + View.cs（+ ViewModel）；**ViewModel 生成失败 → 改代码模拟导出（铁律 4）** | — |
 | 3+4 | `gui-prefab` ∥ `gui-config` | **并行组，见下方「并行组编排」**：主 agent 跑 prefab（**先判断 Editor 运行状态：运行中→unity-cli 编译后改 prefab；未运行→Batch Mode 编过但 prefab 编辑 BLOCKED**）+ 按需 background subagent 跑 config；两者落定后才进 review | prefab：`set gui-prefab done`（已记清单）；config：`skipped` |
-| 5 | `gui-review` | **唯一验证门·并行两车道**：Type-B spawn 独立 reviewer（Bias Guard，`run_in_background`）产出 `GUI_REVIEW.md` ∥ Type-A orchestrator 就地跑机械门（编译/luac/prefab/生成文件/配置）；汇合成合并 CRITICAL 集合 → `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | — |
+| 5 | `gui-review` | **唯一验证门·并行两车道**：Type-B spawn 独立 reviewer（Bias Guard，`run_in_background`）产出 `GUI_REVIEW.md` ∥ Type-A orchestrator 就地跑机械门（编译/LSP/prefab/生成文件/配置）；汇合成合并 CRITICAL 集合 → `GUI_VERDICT.json` + `HUMAN_REVIEW.md` | — |
 | 6 | `gui-improve` | **仅当 review 有合并 CRITICAL 时执行**（最多 2 轮，含编译/语法失败）；修完**重跑 gui-review 两车道**；**无 CRITICAL → `set gui-improve skipped`** | `skipped` |
 | 7 | `gui-learn` | 知识沉淀（捕获遍）回写**私有库** `${CLAUDE_PLUGIN_DATA}/gui-knowledge/`（沉淀进项目公共库是独立的手动 command `gui-learn-public`，不在本自动流程内） | — |
 
@@ -226,7 +226,7 @@ Phase 3 与 Phase 4 **互不依赖**（prefab 绑定改 `.prefab`，配表改 Ex
 3. **主 agent 并行跑 gui-prefab**（`skills/gui-prefab/SKILL.md`）：**先 ToolSearch 主动搜索 Prefab 相关 skill/tool
    （优先）及 Unity Editor 交互能力（fallback）→ 再判断 Unity Editor 运行状态** →
    **Editor 运行中**：unity-cli 编译 → 编译通过 → 挂脚本 + 绑定 `[SerializeField]`；
-   **Editor 未运行**：Batch Mode 编译（`.meta` 生成 + 进程序集）通过，但 **Prefab 编辑本身 BLOCKED**
+   **Editor 未运行**：Batch Mode 编译（进程序集）通过（`.meta` 由 csharp-tool 生成），但 **Prefab 编辑本身 BLOCKED**
    （记 `HUMAN_REVIEW.md`「需在 Unity Editor 中人工挂脚本/绑定」）；
    两路径均不可用则编译门 + Prefab 编辑均 `BLOCKED`。编译与 config subagent 天然重叠。
 4. 主 agent 用 `TaskOutput` **等 config subagent 结束**，据其返回记账：

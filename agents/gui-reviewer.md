@@ -58,7 +58,7 @@ tools: Read, Grep, Glob, LSP
       须放父 View 的 LateUpdate（CRITICAL）。
 - [ ] **`transform.Find` / 路径查找固定控件** —— 应用 `[SerializeField]`（MINOR/MAJOR 视情况）。
 - [ ] **C#/Lua event ID enum 不一致** —— 必须逐项对齐（CRITICAL）。
-- [ ] **生成成功前就写引用新 VM 属性的 View/Panel 代码** —— 须走 §3 的 5 步、过两道编译门后才写（CRITICAL，编译错/静默失败）。
+- [ ] **csharp-tool 导出成功前就写引用新 VM 属性的 View/Panel 代码** —— 须走 mvvm-contract §3 的 4 步：S2 csharp-tool 导出产物就绪（或已降级手改补齐）后才可在 S3 写 View/Panel 引用新常量（CRITICAL，编译错/静默失败）。
 - [ ] **`StylesModule<TEnum>` 未设默认 `m_SelectedIndex`** 或分组不全（MAJOR，首帧空指针/显隐错）。
 
 每个问题分级：**CRITICAL**（崩溃/数据错/破坏数据流）> **MAJOR**（功能缺陷/明显性能问题）>

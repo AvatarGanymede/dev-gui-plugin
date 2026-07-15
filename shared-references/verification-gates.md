@@ -12,7 +12,7 @@
 | 检查项 | 验证方式 | 缺能力时 |
 |--------|---------|----------|
 | C# 编译通过 | 按两路径规则：Editor 运行中→unity-cli 读 Console / refresh；Editor 未运行→Batch Mode（`./unity/WindowsEditor/Unity.exe -projectPath ./client/ -batchmode -quit ...`）；两路径均不可用→`BLOCKED` | 判 `BLOCKED`，记入清单 |
-| Lua 语法正确 | `luac -p` 或热更无报错 | 判 `BLOCKED` |
+| Lua 语法正确 | 通过 Claude Code LSP（`lua-language-server`）诊断 `.lua` 文件语法错误 | LSP 不可用 → 判 `BLOCKED` |
 | Prefab 节点存在 | 读 Prefab hierarchy，核对 View 中 SerializeField 名称对应节点 | 判 `BLOCKED`/`NOT_APPLICABLE` |
 | 绑定数量匹配 | View 中 SerializeField 数量 vs Prefab 实际绑定数量 | 判 `BLOCKED` |
 | 生成文件优先工具导出 | 检查 `*_viewmodel.lua` / `*ViewModel.cs` 的 diff（`*_data.lua` 例外） | 直接可查；若 diff 带 `TODO(模拟导出)` 标记（工具导出失败的降级手改兜底，见 mvvm-contract §3）→ 判 `BLOCKED` 记入清单「待工具正式重新导出覆盖」，**不判 failed**，不触发 improve 回退；若**无标记的**手改（本可用工具却未用）→ 仍判 failed |

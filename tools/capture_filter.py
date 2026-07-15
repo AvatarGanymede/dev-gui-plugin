@@ -65,7 +65,6 @@ _TOOL = (r"(?:"
          r"excel-config|"
          r"the reviewer|reviewer subagent|"
          r"mcp server|the mcp|"
-         r"luac"
          r")")
 _NEG_CLAIM = [
     (re.compile(_TOOL + r"\s+(?:can'?t|cannot|is unable to|does(?:n'?t| not))\s+", re.I), "negative_tool_claim"),
