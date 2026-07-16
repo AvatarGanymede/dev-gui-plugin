@@ -2,7 +2,8 @@
 name: gui-plan
 description: >-
   Atom Game GUI 开发 pipeline 的第 1 阶段（入口）。当用户要「开发/新增/修改一个 GUI 界面、
-  panel、面板」或说「跑 gui pipeline / 做 GUI 需求」时使用。进入 Claude Code 原生 plan mode：
+  panel、面板」或说「跑 gui pipeline / 做 GUI 需求」时使用。先确认用户已提供本次 run 的
+  panelId 和需求描述，缺少任一项时先向用户询问；随后进入 Claude Code 原生 plan mode：
   只读探索资源 + 用已注入的知识库坑点 + 向用户提问澄清需求，写计划并 ExitPlanMode 等人类审批；
   审批通过后把计划高度精炼成需求契约 GUI_PLAN.md 落盘，并初始化 pipeline 运行状态。
   随后（由 /dev-gui-plugin:run 编排）顺序触发 gui-draft → gui-prefab → gui-config → gui-review →
@@ -32,17 +33,22 @@ description: >-
 
 ### A. plan mode（只读 + 交互 + 审批）—— 零写操作
 
-1. **进入 plan mode**：若会话尚未处于 plan mode，`EnterPlanMode`（已在则跳过）。
-2. **只读定位资源**：`Read` `code/LuaScripts/client/data/ui_data.lua`，按 panelId 定位 Prefab 路径、
+1. **入口参数前置检查（必须最先执行）**：在进入 plan mode、读取仓库或执行其他动作之前，先检查
+   用户是否已明确提供本次 run 的 **panelId** 和**需求描述**。缺少任一项时，用 `AskUserQuestion`
+   一次性询问所有缺失项（只缺一项则只问该项），并等待用户回答；**不得从仓库推断 panelId、不得使用
+   占位值或 TODO 绕过此检查**。两项齐全后才继续。
+2. **进入 plan mode**：若会话尚未处于 plan mode，`EnterPlanMode`（已在则跳过）。
+3. **只读定位资源**：`Read` `code/LuaScripts/client/data/ui_data.lua`，按 panelId 定位 Prefab 路径、
    Panel 脚本路径、ViewModel 类型。找不到 → 在计划里标「待确认」。
-3. **用已注入的知识库坑点**：两库 query_pack 已由 SessionStart hook 注入到上下文（**无需现场读文件
+4. **用已注入的知识库坑点**：两库 query_pack 已由 SessionStart hook 注入到上下文（**无需现场读文件
    或 init**）。提取与本需求相关的历史坑点/组件技巧；两库矛盾以公共库为准。
-4. **查代码自答，无法确定必须提问**：需求有缺口时**先穷尽代码仓库**——读 `ui_data.lua`、同目录现有
-   panel/View/ViewModel、`shared-references`、已注入的 query_pack。凡能从仓库推断的（panelId、Prefab
-   路径、ViewModel 字段惯例等）一律自己定，**不问用户**；**无法从代码确定的、需要用户确认的，必须向用户
-   提问澄清，不得用 `**[TODO: 待人工确认]**` 占位绕过**。用 `AskUserQuestion` **一次性**问完所有此类
+5. **查代码自答，无法确定必须提问**：在 panelId 和需求描述已通过入口检查后，如仍有其他需求缺口，
+   **先穷尽代码仓库**——读 `ui_data.lua`、同目录现有 panel/View/ViewModel、`shared-references`、已注入的
+   query_pack。凡能从仓库推断的（Prefab 路径、ViewModel 字段惯例等）一律自己定，**不问用户**；
+   **无法从代码确定的、需要用户确认的，必须向用户提问澄清，不得用
+   `**[TODO: 待人工确认]**` 占位绕过**。用 `AskUserQuestion` **一次性**问完所有此类
    问题（不逐条追问）。此阶段无 autorun 哨兵，可自由停顿。
-5. **写计划 → 审批**：把需求写成计划（**偏需求侧**：要做什么 + 验收标准，而非详细实现步骤——实现是
+6. **写计划 → 审批**：把需求写成计划（**偏需求侧**：要做什么 + 验收标准，而非详细实现步骤——实现是
    gui-draft 的职责）。**例外：以下两项设计属于契约，须在本阶段定死**（gui-draft 只照抄不再设计），
    且**必须按此顺序**：
    1. **先做模块拆分设计**：判断本界面是否需拆子 View / 子 Panel——多页签、多个高内聚低耦合模块、

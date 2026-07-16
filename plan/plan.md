@@ -218,19 +218,22 @@ ${CLAUDE_PROJECT_DIR}/.claude/dev-gui-runs/<panelId>/
 
 ### Phase 1: gui-plan — plan mode 确认需求 + 人类审批
 
-**职责**：进入 plan mode，只读定位资源、向用户澄清需求、写计划并**等人类审批**；审批通过后产出
+**职责**：先确认用户已提供本次 run 的 panelId 和需求描述，再进入 plan mode，只读定位资源、向用户
+澄清需求、写计划并**等人类审批**；审批通过后产出
 **高度精炼**的需求契约 `GUI_PLAN.md`。这是整条 pipeline 唯一的交互 + 人类审批关卡；本阶段**零写操作**，
 所有写操作（run state / GUI_PLAN.md / 哨兵）都发生在审批之后。
 
 **输入**：用户原始需求（可能不完整）
 
 **处理流程**：
-1. 进入 plan mode（`EnterPlanMode`；已在则跳过）—— 以下均为只读
-2. 读 `code/LuaScripts/client/data/ui_data.lua` 定位 Prefab 路径、Panel 脚本路径、ViewModel 类型
-3. 用 SessionStart hook 已注入上下文的 query_pack 历史坑点/组件技巧（**无需现场读文件或 init**）
-4. 需求缺失/歧义 → `AskUserQuestion` 一次性向用户澄清（此阶段无 autorun 哨兵，可自由停顿）
-5. 写计划（偏需求侧：要做什么 + 验收标准）→ `ExitPlanMode` 等人类审批；被拒则改后再审
-6. 审批通过后（已退出 plan mode）→ 初始化 run state + 输出精炼 `GUI_PLAN.md`
+1. 最先检查用户是否明确提供 panelId 和需求描述；缺少任一项时，用 `AskUserQuestion` 一次性问齐并等待回答，
+   不得从仓库推断或用占位值绕过
+2. 两项齐全后进入 plan mode（`EnterPlanMode`；已在则跳过）—— 以下均为只读
+3. 读 `code/LuaScripts/client/data/ui_data.lua` 定位 Prefab 路径、Panel 脚本路径、ViewModel 类型
+4. 用 SessionStart hook 已注入上下文的 query_pack 历史坑点/组件技巧（**无需现场读文件或 init**）
+5. 其他需求缺失/歧义 → `AskUserQuestion` 一次性向用户澄清（此阶段无 autorun 哨兵，可自由停顿）
+6. 写计划（偏需求侧：要做什么 + 验收标准）→ `ExitPlanMode` 等人类审批；被拒则改后再审
+7. 审批通过后（已退出 plan mode）→ 初始化 run state + 输出精炼 `GUI_PLAN.md`
 
 **输出格式 `GUI_PLAN.md`（高度精炼，供 gui-review 独立审查者当契约）**：
 ```markdown
